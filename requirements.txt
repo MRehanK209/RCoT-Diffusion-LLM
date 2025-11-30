@@ -1,9 +1,10 @@
 numpy<2.0
-torch==2.6.0
+torch>=2.5.1,<2.7.0
+transformers>=4.46.2
+accelerate
 packaging
 tqdm
 pyyaml
-transformers
 datasets
 protobuf
 SentencePiece
@@ -16,3 +17,4 @@ jq
 class_resolver
 wandb
 einops>=0.7.0
+scipy
