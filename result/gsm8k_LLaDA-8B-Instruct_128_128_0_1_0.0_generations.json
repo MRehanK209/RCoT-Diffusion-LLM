@@ -1,0 +1,47 @@
+{
+  "config": {
+    "model_path": "GSAI-ML/LLaDA-8B-Instruct",
+    "dataset": "gsm8k",
+    "batch_size": 1,
+    "gen_length": 128,
+    "block_length": 32,
+    "temperature": 0.0,
+    "diffusion_steps": 128,
+    "few_shot": 0,
+    "num_evals": 2,
+    "output_dir": "results",
+    "dont_save": false,
+    "n_samples": 1,
+    "cfg_scale": 0.0,
+    "remasking": "low_confidence",
+    "alg": "entropy",
+    "alg_temp": 0.0,
+    "top_p": 0.95,
+    "top_k": 50,
+    "use_cache": true,
+    "if_cache_position": true,
+    "threshold": 0.3,
+    "parallel_decode": true,
+    "data_seed": 42
+  },
+  "metrics": {
+    "wall_time": 11.106252074241638,
+    "total_processed": 2
+  },
+  "generations": [
+    {
+      "question": "Carol and Jennifer are sisters from Los Angeles who love collecting signatures from celebrities. During their summer break from school, the sisters spend every afternoon collecting signatures. After five weeks, Carol and Jennifer compare their autograph books, counting up the number of signatures each sister has collected. Carol has 20 signatures in her book, and Jennifer has 44. The sisters have three more weeks of summer vacation, and they decide they want to reach 100 signatures between them by the end of the summer. How many signatures do the sisters need to collect to reach their goal?",
+      "prompt_input": "<|startoftext|><|start_header_id|>user<|end_header_id|>\n\nYou are a math expert. You will be given a question to solve. Solve it step by step. Wrap the final answer in a \\boxed{}. \nRespond in the following format:\n<reasoning>\nYour reasoning here\n</reasoning>\n<answer>\n\\boxed{...}\n</answer>\n\nQuestion: Carol and Jennifer are sisters from Los Angeles who love collecting signatures from celebrities. During their summer break from school, the sisters spend every afternoon collecting signatures. After five weeks, Carol and Jennifer compare their autograph books, counting up the number of signatures each sister has collected. Carol has 20 signatures in her book, and Jennifer has 44. The sisters have three more weeks of summer vacation, and they decide they want to reach 100 signatures between them by the end of the summer. How many signatures do the sisters need to collect to reach their goal?\nAnswer:<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
+      "generations": "<reasoning>\nCarol and Jennifer currently to have a total of 20 + 44 = 64 signatures. To reach their goal of 100 signatures, they need to collect 1000 - 64 = 66 signatures. Since they have three more weeks of summer vacation, they can collect collect 66 / 3 = 22 signatures per week. Therefore, they sister needs to collect 22 signatures per week to reach their goal over the summer.\n</reasoning>\n<answer>\n\\boxed{22}\n</answer><|eot_id|>",
+      "extracted_answer": 22.0,
+      "ground_truth": 36.0
+    },
+    {
+      "question": "A team of 4 painters worked on a mansion for 3/8ths of a day every day for 3 weeks. How many hours of work did each painter put in?",
+      "prompt_input": "<|startoftext|><|start_header_id|>user<|end_header_id|>\n\nYou are a math expert. You will be given a question to solve. Solve it step by step. Wrap the final answer in a \\boxed{}. \nRespond in the following format:\n<reasoning>\nYour reasoning here\n</reasoning>\n<answer>\n\\boxed{...}\n</answer>\n\nQuestion: A team of 4 painters worked on a mansion for 3/8ths of a day every day for 3 weeks. How many hours of work did each painter put in?\nAnswer:<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
+      "generations": "<reasoning>\nEach painter worked for 3/8 of a a day every day, which is  to 3/8 * 24 = 9 hours per day. They worked for 3 weeks, which is 3 * 7 = 21 days. Therefore, each painter worked for  of  9 * 1 = 1185 hours. Since there are 4 painters, each painter worked for 188 / 4 = 45 hours.\n\n</ing>>\n<>>\nboxedboxed{45}\n</answer><|eot_id|>",
+      "extracted_answer": "<reasoning>\nEach painter worked for 3/8 of a a day every day, which is  to 3/8 * 24 = 9 hours per day. They worked for 3 weeks, which is 3 * 7 = 21 days. Therefore, each painter worked for  of  9 * 1 = 1185 hours. Since there are 4 painters, each painter worked for 188 / 4 = 45 hours.\n\n</ing>>\n<>>\nboxedboxed{45}\n</answer><|eot_id|>",
+      "ground_truth": 189.0
+    }
+  ]
+}

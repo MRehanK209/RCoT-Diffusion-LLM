@@ -80,6 +80,11 @@ def evaluate(
     top_p=0.95,
     top_k=50,
     n_samples=1,  # Number of samples to generate per question (for pass@k)
+    # Fast-dLLM parameters
+    use_cache=False,
+    if_cache_position=False,
+    threshold=0.3,
+    parallel_decode=False,
 ):
     """
     Evaluate the diffusion model using its generate() method.
@@ -102,6 +107,10 @@ def evaluate(
         top_p: Top-p sampling (Dream only)
         top_k: Top-k sampling (Dream only)
         n_samples: Number of samples to generate per question (for pass@k)
+        use_cache: Fast-dLLM: Enable KV cache (2-3x speedup)
+        if_cache_position: Fast-dLLM: Enable DualCache (maximum speedup)
+        threshold: Fast-dLLM: Confidence threshold for parallel decoding
+        parallel_decode: Fast-dLLM: Enable confidence-aware parallel decoding
     """
     diffusion_model.model.eval()
     total_processed = 0
@@ -152,6 +161,11 @@ def evaluate(
                 alg_temp=alg_temp,  # Dream only
                 top_p=top_p,  # Dream only
                 top_k=top_k,  # Dream only
+                # Fast-dLLM parameters (both LLaDA and Dream)
+                use_cache=use_cache,
+                if_cache_position=if_cache_position,
+                threshold=threshold,
+                parallel_decode=parallel_decode,
             )
 
             # Slice only the generated tokens (after the input)
@@ -261,12 +275,28 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=0.95, help="Dream: Top-p sampling")
     parser.add_argument("--top_k", type=int, default=50, help="Dream: Top-k sampling")
     
+    # Fast-dLLM acceleration parameters
+    parser.add_argument("--use_cache", action="store_true",
+                        help="Fast-dLLM: Enable KV cache for block-wise decoding (2-3x speedup)")
+    parser.add_argument("--if_cache_position", action="store_true",
+                        help="Fast-dLLM: Enable DualCache for masked positions")
+    parser.add_argument("--threshold", type=float, default=0.3,
+                        help="Fast-dLLM: Confidence threshold for parallel decoding (0.1-0.5)")
+    parser.add_argument("--parallel_decode", action="store_true",
+                        help="Fast-dLLM: Enable confidence-aware parallel decoding (4-6x speedup)")
+    
     # Dataset seeding for reproducible question order
     parser.add_argument("--data_seed", type=int, default=42,
                         help="Random seed for dataset shuffling (ensures same questions each run)")
     
     args = parser.parse_args()
-    num_evals = {"gsm8k": 256, "math": 256, "countdown": 256, "sudoku": 256}
+    
+    # Default number of evaluations per dataset
+    default_num_evals = {"gsm8k": 256, "math": 256, "countdown": 256, "sudoku": 256}
+    
+    # Use args.num_evals if provided, otherwise use default for the dataset
+    num_evals_to_use = args.num_evals if args.num_evals is not None else default_num_evals[args.dataset]
+    print(f"Number of samples to evaluate: {num_evals_to_use}")
 
     # Load model and tokenizer
     print(f"Loading model from: {args.model_path}")
@@ -274,14 +304,30 @@ if __name__ == "__main__":
     # Detect if this is a Dream model or LLaDA
     is_dream = 'dream' in args.model_path.lower()
     
-    # LLaDA models use AutoModel, Dream models also use AutoModel
-    print("Loading with AutoModel + Flash Attention 2")
-    model = AutoModel.from_pretrained(
-        args.model_path,
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",  # Enable Flash Attention 2 for speed
-    ).to(device)
+    # For Dream models, use local code with Fast-dLLM optimizations
+    # For LLaDA models, use local code with Fast-dLLM optimizations
+    if is_dream:
+        # Import local Dream model with Fast-dLLM support
+        from dream import DreamConfig, DreamModel
+        print("Loading Dream model with local Fast-dLLM code...")
+        config = DreamConfig.from_pretrained(args.model_path, trust_remote_code=True)
+        model = DreamModel.from_pretrained(
+            args.model_path,
+            config=config,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
+    else:
+        # Import local LLaDA model with Fast-dLLM support
+        from llada import LLaDAModelLM, LLaDAConfig
+        print("Loading LLaDA model with local Fast-dLLM code...")
+        config = LLaDAConfig.from_pretrained(args.model_path, trust_remote_code=True)
+        model = LLaDAModelLM.from_pretrained(
+            args.model_path,
+            config=config,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True)
     
@@ -294,6 +340,7 @@ if __name__ == "__main__":
     print(f"\nDetecting model type from path: {args.model_path}")
     diffusion_model = create_model(model, tokenizer, args.model_path)
     print(f"Using model class: {diffusion_model.__class__.__name__}")
+    print(f"Model device: {diffusion_model.device}")
     
     # Detect if this is a base or instruct model
     is_base_model = 'base' in args.model_path.lower()
@@ -308,7 +355,7 @@ if __name__ == "__main__":
 
     dataset = DATASET_MAP[args.dataset](
         tokenizer,
-        subsample=num_evals[args.dataset],
+        subsample=num_evals_to_use,
         num_examples=args.few_shot,
         is_base_model=is_base_model,
     )
@@ -342,6 +389,11 @@ if __name__ == "__main__":
         top_p=args.top_p,
         top_k=args.top_k,
         n_samples=args.n_samples,  # Number of generations per question
+        # Fast-dLLM parameters
+        use_cache=args.use_cache,
+        if_cache_position=args.if_cache_position,
+        threshold=args.threshold,
+        parallel_decode=args.parallel_decode,
     )
 
     if not args.dont_save:

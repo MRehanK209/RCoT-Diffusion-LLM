@@ -1,20 +1,40 @@
+# Fast-dLLM Compatible Requirements
+# Resolves conflicts with vllm and xformers
+
+# Core dependencies - PyTorch 2.8.0 (compromise between Fast-dLLM and vllm)
+torch==2.8.0
+torchvision==0.23.0
+torchaudio==2.8.0
+
+# Transformers and HuggingFace
+transformers==4.55.2
+huggingface-hub>=0.34.0,<1.0
+tokenizers==0.21.4
+accelerate==0.34.2
+
+# Datasets
+datasets==2.14.6
+fsspec>=2023.1.0,<=2023.10.0
+pyarrow>=8.0.0,<15.0.0
+
+# Evaluation
+evaluate==0.4.0
+
+# Utilities
 numpy<2.0
-torch>=2.5.1,<2.7.0
-transformers>=4.46.2
-accelerate
-packaging
-tqdm
-pyyaml
-datasets
-protobuf
-SentencePiece
-rich
-omegaconf
-pydantic
-click
-click_pathlib
-jq
-class_resolver
-wandb
-einops>=0.7.0
 scipy
+tqdm
+pandas
+pydantic==2.10.6
+
+# Optional: vllm and xformers (if needed)
+# These should now be compatible with torch 2.8.0
+# Uncomment if you need them:
+# vllm==0.11.0
+# xformers==0.0.32.post1
+
+# Additional Fast-dLLM dependencies
+sentencepiece
+einops>=0.6.1
+ipykernel
+dotenv
