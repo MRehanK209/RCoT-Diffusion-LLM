@@ -224,7 +224,7 @@ def evaluate_auto_regressive_model(
     gc.collect()
     torch.cuda.empty_cache()
     
-    return metrics
+    return filename
 
 def evaluate_dllm(
     diffusion_model_name,
@@ -353,6 +353,10 @@ def evaluate_dllm(
         total_processed += batch_size * n_samples
         wall_times.append(time.time() - start_time)
 
+        # CRITICAL: Clean up GPU memory after each batch to prevent 20GB->30GB+ leak
+        del out, input_ids, attention_mask
+        torch.cuda.empty_cache()
+
         idx = random.randint(0, len(questions) - 1)
 
     avg_wall_time = sum(wall_times) / len(wall_times)
@@ -384,7 +388,7 @@ def evaluate_dllm(
     gc.collect()
     torch.cuda.empty_cache()
     
-    return metrics
+    return filename
 
 def evaluate_fast_dllm(
     diffusion_model_name,
@@ -523,6 +527,11 @@ def evaluate_fast_dllm(
         total_processed += batch_size * n_samples
         wall_times.append(time.time() - start_time)
 
+        # CRITICAL: Clean up GPU memory after each batch to prevent 20GB->30GB+ leak
+        # Without this, KV cache and intermediate tensors accumulate
+        del out, input_ids, attention_mask
+        torch.cuda.empty_cache()
+
         idx = random.randint(0, len(questions) - 1)
 
     avg_wall_time = sum(wall_times) / len(wall_times)
@@ -554,7 +563,7 @@ def evaluate_fast_dllm(
     gc.collect()
     torch.cuda.empty_cache()
     
-    return metrics
+    return filename
 
 def main():
     import argparse
