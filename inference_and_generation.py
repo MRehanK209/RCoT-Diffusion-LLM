@@ -202,7 +202,7 @@ def evaluate_auto_regressive_model(
     
     # Save results to file
     model_name = model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name}_{gen_length}_{few_shot}_{n_samples}_{temperature}_generations_ar.json"
+    filename = f"{output_dir}/{model_name}_{gen_length}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_ar.json"
     with open(filename, "w") as f:
         json.dump(
             {
@@ -362,7 +362,7 @@ def evaluate_dllm(
         "total_processed": total_processed,
     }
     model_name = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{temperature}_generations_testing.json"
+    filename = f"{output_dir}/{model_name}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing.json"
     with open(filename, "w") as f:
         json.dump(
             {
@@ -532,7 +532,7 @@ def evaluate_fast_dllm(
         "total_processed": total_processed,
     }
     model_name = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{temperature}_generations_testing_fast_dllm.json"
+    filename = f"{output_dir}/{model_name}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing_fast_dllm.json"
     with open(filename, "w") as f:
         json.dump(
             {
@@ -557,7 +557,33 @@ def evaluate_fast_dllm(
     return metrics
 
 def main():
-    pass
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--diffusion_model_name", default="GSAI-ML/LLaDA-8B-Base", type=str)
+    args = parser.parse_args()
+
+    diffusion_model_name = args.diffusion_model_name
+    data = "gsm8k"
+    num_evals_to_use = 256
+    few_shot = 4
+    batch_size = 1
+    gen_length = 256
+    diffusion_steps = 256
+    temperature = 0.0
+    cfg_scale = 0.0
+    steps = 256
+    block_length = 32
+    remasking = "low_confidence"
+    alg = "entropy"
+    alg_temp = 0.0
+    top_p = 0.95
+    top_k = None
+    n_samples = 1
+
+
+    metrics = evaluate_dllm(
+        diffusion_model_name, data, num_evals_to_use, few_shot, batch_size, gen_length, diffusion_steps, temperature, cfg_scale, steps, block_length, remasking, alg, alg_temp, top_p, top_k, n_samples
+        )
 
 if __name__ == "__main__":
     main()
