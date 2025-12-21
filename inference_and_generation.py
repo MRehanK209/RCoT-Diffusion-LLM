@@ -21,6 +21,7 @@ from metrics.parsers import Parser
 from generate_fast import load_fast_diffusion_model_and_tokenizer, build_prompt
 from generate import load_diffusion_model_and_tokenizer, build_prompt
 from dotenv import load_dotenv
+from evaluate_pass_k import compute_metrics
 
 load_dotenv()
 
@@ -289,6 +290,14 @@ def evaluate_dllm(
         
         # Generate n_samples for each question in the batch
         for sample_idx in range(n_samples):
+            # CRITICAL: Set a unique seed for each sample to ensure diversity
+            # This ensures different outputs even with n_samples=32, 64, or more
+            if n_samples > 1:
+                unique_seed = int(uuid.uuid4().int % (2**(n_samples)))
+                torch.manual_seed(unique_seed)
+                torch.cuda.manual_seed_all(unique_seed)
+                np.random.seed(unique_seed % (2**(n_samples+1)))
+            
             out = diffusion_model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -458,6 +467,14 @@ def evaluate_fast_dllm(
         
         # Generate n_samples for each question in the batch
         for sample_idx in range(n_samples):
+            # CRITICAL: Set a unique seed for each sample to ensure diversity
+            # This ensures different outputs even with n_samples=32, 64, or more
+            if n_samples > 1:
+                unique_seed = int(uuid.uuid4().int % (2**(n_samples)))
+                torch.manual_seed(unique_seed)
+                torch.cuda.manual_seed_all(unique_seed)
+                np.random.seed(unique_seed % (2**(n_samples+1)))
+            
             out = diffusion_model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -578,7 +595,7 @@ def main():
     batch_size = 1
     gen_length = 256
     diffusion_steps = 256
-    temperature = 0.0
+    temperature = 0.7
     cfg_scale = 0.0
     steps = 256
     block_length = 32
@@ -587,12 +604,21 @@ def main():
     alg_temp = 0.0
     top_p = 0.95
     top_k = None
-    n_samples = 1
+    n_samples = 32
+    use_cache=True
+    dual_cache=True
+    threshold = 0.9
+    factor = 1.0
 
-
-    metrics = evaluate_dllm(
-        diffusion_model_name, data, num_evals_to_use, few_shot, batch_size, gen_length, diffusion_steps, temperature, cfg_scale, steps, block_length, remasking, alg, alg_temp, top_p, top_k, n_samples
+    filename = evaluate_fast_dllm(
+        diffusion_model_name, data, num_evals_to_use, few_shot, batch_size, gen_length, diffusion_steps, temperature, cfg_scale, steps, block_length, remasking, alg, alg_temp, top_p, top_k, n_samples, use_cache, dual_cache, threshold, factor
         )
+
+    compute_metrics(
+        results_file=filename,
+        samples_per_problem=32,
+        k_values=[1, 2, 4, 8, 16, 32]
+    )
 
 if __name__ == "__main__":
     main()
