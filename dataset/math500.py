@@ -1,9 +1,6 @@
-import torch
-
-import random
+import numpy as np
 from dataset.gsm8k import GSM8KDataset
 from datasets import load_dataset
-from metrics.parsers import Parser, is_equiv
 
 
 MATH500_SYSTEM_PROMPT = """You are a math expert. You will be given a math problem to solve. Solve it step by step. Wrap the final answer in a \\boxed{}. 
@@ -36,7 +33,7 @@ class MATH500Dataset(GSM8KDataset):
         if self.num_examples <= 0:
             return []
         train_data = load_dataset("EleutherAI/hendrycks_math", ("algebra"), split="train")
-        samples = random.sample(range(len(train_data)), self.num_examples)
+        samples = np.random.choice(range(len(train_data)), self.num_examples, replace=False)
         few_shot_examples = []
         for example_idx in samples:
             problem = train_data[example_idx]["problem"]

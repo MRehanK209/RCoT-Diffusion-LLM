@@ -2,14 +2,12 @@ import json
 import os
 import random
 import time
-import warnings
-import uuid
 import gc
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 from dataset.gsm8k import GSM8KDataset
@@ -18,8 +16,8 @@ from dataset.countdown import CTDDataset
 from dataset.sudoku import SudokuDataset
 from metrics.parsers import Parser
 
-from generate_fast import load_fast_diffusion_model_and_tokenizer, build_prompt
-from generate import load_diffusion_model_and_tokenizer, build_prompt
+from generate_fast import load_fast_diffusion_model_and_tokenizer
+from generate import load_diffusion_model_and_tokenizer
 from dotenv import load_dotenv
 from evaluate_pass_k import compute_metrics
 
@@ -79,21 +77,39 @@ def evaluate_auto_regressive_model(
     output_dir="results"
 ):
     """
-    Evaluate an auto-regressive model on a dataset.
-    
-    Args:
-        model: The auto-regressive model to evaluate
-        model_name: Name of the model (for saving results)
-        tokenizer: The tokenizer
-        dataloader: DataLoader with the evaluation dataset
-        gen_length: Maximum number of new tokens to generate
-        few_shot: Number of few-shot examples used
-        temperature: Sampling temperature
-        top_p: Nucleus sampling parameter
-        top_k: Top-k sampling parameter
-        n_samples: Number of samples to generate per question
-        output_dir: Directory to save results
+    Evaluate an auto-regressive model on a dataset with incremental saving and resume capability.
     """
+    # Determine output filename BEFORE loading model
+    model_name_clean = model_name.replace("/", "_")
+    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_ar.json"
+    
+    # Check for existing results and resume capability
+    all_generations = []
+    processed_questions = set()
+    
+    if os.path.exists(filename):
+        print(f"\n{'='*80}")
+        print(f"FOUND EXISTING RESULTS: {filename}")
+        print(f"{'='*80}")
+        try:
+            with open(filename, 'r') as f:
+                existing_data = json.load(f)
+                all_generations = existing_data.get('generations', [])
+                for gen in all_generations:
+                    processed_questions.add(gen.get('question', ''))
+                print(f"Loaded {len(all_generations)} existing generations")
+                print(f"Will resume from question {len(all_generations) + 1}")
+        except Exception as e:
+            print(f"Warning: Could not load existing file: {e}")
+            print("Starting fresh...")
+            all_generations = []
+            processed_questions = set()
+    else:
+        print(f"\n{'='*80}")
+        print(f"STARTING NEW EVALUATION")
+        print(f"Output will be saved to: {filename}")
+        print(f"{'='*80}")
+
     model, tokenizer = load_auto_regressive_model_and_tokenizer(model_name, device)
     model.eval()
 
@@ -110,29 +126,48 @@ def evaluate_auto_regressive_model(
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=False,  # CRITICAL: Don't shuffle to maintain reproducibility
         collate_fn=dataset.collate_fn,
     )
 
-    total_processed = 0
+    total_processed = len(all_generations) * n_samples if all_generations else 0
     wall_times = []
-    all_generations = []
     device = model.device
+    skipped_count = 0
+    questions_remaining = len(dataset) - len(all_generations)
 
-    for batch in tqdm(dataloader, desc=f"Evaluating (total samples: {len(dataloader.dataset)})"):
+    # Create progress bar that shows actual questions processed, not batch iteration
+    pbar = tqdm(total=questions_remaining, 
+                desc=f"Processing remaining questions",
+                initial=0)
+
+    for batch in dataloader:
+        # Check if this batch should be skipped (already processed)
+        questions = batch["questions"]
+        batch_questions_to_process = []
+        batch_indices_to_process = []
+        
+        for j, question in enumerate(questions):
+            if question not in processed_questions:
+                batch_questions_to_process.append(question)
+                batch_indices_to_process.append(j)
+        
+        if not batch_questions_to_process:
+            skipped_count += len(questions)
+            continue
+        
         start_time = time.time()
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch.get("attention_mask", None)
         if attention_mask is not None:
             attention_mask = attention_mask.to(device)
         gt_answers = batch["answers"]
-        questions = batch["questions"]
         prompts = batch["prompts"]
 
-        batch_size = len(questions)
-        all_cleaned_texts = [[] for _ in range(batch_size)]
-        raw_generations = [[] for _ in range(batch_size)]
-        all_extracted_answers = [[] for _ in range(batch_size)]
+        batch_size_actual = len(questions)
+        all_cleaned_texts = [[] for _ in range(batch_size_actual)]
+        raw_generations = [[] for _ in range(batch_size_actual)]
+        all_extracted_answers = [[] for _ in range(batch_size_actual)]
         
         # Generate n_samples for each question in the batch
         for sample_idx in range(n_samples):
@@ -185,39 +220,49 @@ def evaluate_auto_regressive_model(
                 "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
                 "ground_truth": gt_answers[j],
             }
-            for j in range(batch_size)
+            for j in range(batch_size_actual)
         ]
         
-        # Store results in memory
-        all_generations.extend(example_result)
+        # Only add results for questions we actually processed
+        for j, result in enumerate(example_result):
+            if j in batch_indices_to_process:
+                all_generations.append(result)
+                processed_questions.add(result["question"])
         
-        total_processed += batch_size * n_samples
+        total_processed += len(batch_indices_to_process) * n_samples
         wall_times.append(time.time() - start_time)
+        
+        # Update progress bar for each question processed
+        pbar.update(len(batch_indices_to_process))
 
-    avg_wall_time = sum(wall_times) / len(wall_times)
-    metrics = {
-        "wall_time": avg_wall_time,
-        "generations": all_generations,
-        "total_processed": total_processed,
-    }
-    
-    # Save results to file
-    model_name = model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name}_{gen_length}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_ar.json"
-    with open(filename, "w") as f:
-        json.dump(
-            {
-                "metrics": {
-                    "wall_time": metrics["wall_time"],
-                    "total_processed": metrics["total_processed"],
+        # CRITICAL: Save after EVERY batch
+        avg_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0
+        with open(filename, "w") as f:
+            json.dump(
+                {
+                    "metrics": {
+                        "wall_time": avg_wall_time,
+                        "total_processed": total_processed,
+                        "num_completed": len(all_generations),
+                        "num_remaining": len(dataset) - len(all_generations),
+                    },
+                    "generations": all_generations,
                 },
-                "generations": metrics["generations"],
-            },
-            f,
-            indent=2,
-        )
-    print(f"Saved generations to {filename}")
+                f,
+                indent=2,
+            )
 
+    pbar.close()
+    
+    if skipped_count > 0:
+        print(f"\nSkipped {skipped_count} already-processed questions")
+    
+    print(f"\n{'='*80}")
+    print(f"EVALUATION COMPLETE")
+    print(f"Total generations: {len(all_generations)}")
+    print(f"Saved to: {filename}")
+    print(f"{'='*80}")
+    
     del model
     del tokenizer
     del dataset
@@ -249,6 +294,37 @@ def evaluate_dllm(
     output_dir = "results"
     ):
 
+    # Determine output filename BEFORE loading model
+    model_name_clean = diffusion_model_name.replace("/", "_")
+    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing.json"
+    
+    # Check for existing results and resume capability
+    all_generations = []
+    processed_questions = set()
+    
+    if os.path.exists(filename):
+        print(f"\n{'='*80}")
+        print(f"FOUND EXISTING RESULTS: {filename}")
+        print(f"{'='*80}")
+        try:
+            with open(filename, 'r') as f:
+                existing_data = json.load(f)
+                all_generations = existing_data.get('generations', [])
+                for gen in all_generations:
+                    processed_questions.add(gen.get('question', ''))
+                print(f"Loaded {len(all_generations)} existing generations")
+                print(f"Will resume from question {len(all_generations) + 1}")
+        except Exception as e:
+            print(f"Warning: Could not load existing file: {e}")
+            print("Starting fresh...")
+            all_generations = []
+            processed_questions = set()
+    else:
+        print(f"\n{'='*80}")
+        print(f"STARTING NEW EVALUATION")
+        print(f"Output will be saved to: {filename}")
+        print(f"{'='*80}")
+
     diffusion_model, tokenizer = load_diffusion_model_and_tokenizer(diffusion_model_name, device)
     diffusion_model.eval()
     device = diffusion_model.device
@@ -266,38 +342,49 @@ def evaluate_dllm(
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=False,  # CRITICAL: Don't shuffle to maintain reproducibility
         collate_fn=dataset.collate_fn,
     )
-    total_processed = 0
+    total_processed = len(all_generations) * n_samples if all_generations else 0
     wall_times = []
-    all_generations = []
+    skipped_count = 0
+    questions_remaining = len(dataset) - len(all_generations)
 
-    for batch in tqdm(dataloader, desc=f"Evaluating (total samples: {len(dataloader.dataset)})"):
+    # Create progress bar that shows actual questions processed, not batch iteration
+    pbar = tqdm(total=questions_remaining, 
+                desc=f"Processing remaining questions",
+                initial=0)
+
+    for batch in dataloader:
+        # Check if this batch should be skipped (already processed)
+        questions = batch["questions"]
+        batch_questions_to_process = []
+        batch_indices_to_process = []
+        
+        for j, question in enumerate(questions):
+            if question not in processed_questions:
+                batch_questions_to_process.append(question)
+                batch_indices_to_process.append(j)
+        
+        if not batch_questions_to_process:
+            skipped_count += len(questions)
+            continue
+        
         start_time = time.time()
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch.get("attention_mask", None)
         if attention_mask is not None:
             attention_mask = attention_mask.to(device)
         gt_answers = batch["answers"]
-        questions = batch["questions"]
         prompts = batch["prompts"]
 
-        batch_size = len(questions)
-        all_cleaned_texts = [[] for _ in range(batch_size)]
-        raw_generations = [[] for _ in range(batch_size)]
-        all_extracted_answers = [[] for _ in range(batch_size)]
+        batch_size_actual = len(questions)
+        all_cleaned_texts = [[] for _ in range(batch_size_actual)]
+        raw_generations = [[] for _ in range(batch_size_actual)]
+        all_extracted_answers = [[] for _ in range(batch_size_actual)]
         
         # Generate n_samples for each question in the batch
         for sample_idx in range(n_samples):
-            # CRITICAL: Set a unique seed for each sample to ensure diversity
-            # This ensures different outputs even with n_samples=32, 64, or more
-            if n_samples > 1:
-                unique_seed = int(uuid.uuid4().int % (2**(n_samples)))
-                torch.manual_seed(unique_seed)
-                torch.cuda.manual_seed_all(unique_seed)
-                np.random.seed(unique_seed % (2**(n_samples+1)))
-            
             out = diffusion_model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -322,7 +409,6 @@ def evaluate_dllm(
             
             # Process each generation in the batch
             for j, text in enumerate(generated_texts):
-                # Truncate at EOS tokens
                 raw_generations[j].append(text)
                 eos_markers = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
                 for marker in eos_markers:
@@ -331,20 +417,17 @@ def evaluate_dllm(
                         break
                 all_cleaned_texts[j].append(text)
                 
-                # Extract the boxed answer from the generation
                 try:
                     extracted_answer = Parser.extract_answer_boxed(text)
-                    # Try to convert to float for numerical answers
                     try:
                         extracted_answer = float(extracted_answer)
                     except (ValueError, TypeError):
-                        # Keep as string if not a number
                         pass
                 except Exception as e:
                     extracted_answer = None
                 all_extracted_answers[j].append(extracted_answer)
         
-        # Create results with lists of generations (or single value if n_samples=1)
+        # Create results
         example_result = [
             {
                 "question": questions[j],
@@ -353,42 +436,52 @@ def evaluate_dllm(
                 "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
                 "ground_truth": gt_answers[j],
             }
-            for j in range(batch_size)
+            for j in range(batch_size_actual)
         ]
         
-        # Store results in memory
-        all_generations.extend(example_result)
+        # Only add results for questions we actually processed
+        for j, result in enumerate(example_result):
+            if j in batch_indices_to_process:
+                all_generations.append(result)
+                processed_questions.add(result["question"])
         
-        total_processed += batch_size * n_samples
+        total_processed += len(batch_indices_to_process) * n_samples
         wall_times.append(time.time() - start_time)
+        
+        # Update progress bar for each question processed
+        pbar.update(len(batch_indices_to_process))
 
-        # CRITICAL: Clean up GPU memory after each batch to prevent 20GB->30GB+ leak
+        # CRITICAL: Save after EVERY batch
+        avg_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0
+        with open(filename, "w") as f:
+            json.dump(
+                {
+                    "metrics": {
+                        "wall_time": avg_wall_time,
+                        "total_processed": total_processed,
+                        "num_completed": len(all_generations),
+                        "num_remaining": len(dataset) - len(all_generations),
+                    },
+                    "generations": all_generations,
+                },
+                f,
+                indent=2,
+            )
+
+        # Clean up GPU memory
         del out, input_ids, attention_mask
         torch.cuda.empty_cache()
 
-        idx = random.randint(0, len(questions) - 1)
-
-    avg_wall_time = sum(wall_times) / len(wall_times)
-    metrics = {
-        "wall_time": avg_wall_time,
-        "generations": all_generations,
-        "total_processed": total_processed,
-    }
-    model_name = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing.json"
-    with open(filename, "w") as f:
-        json.dump(
-            {
-                "metrics": {
-                    "wall_time": metrics["wall_time"],
-                    "total_processed": metrics["total_processed"],
-                },
-                "generations": metrics["generations"],
-            },
-            f,
-            indent=2,
-        )
-    print(f"Saved generations to {filename}")
+    pbar.close()
+    
+    if skipped_count > 0:
+        print(f"\nSkipped {skipped_count} already-processed questions")
+    
+    print(f"\n{'='*80}")
+    print(f"EVALUATION COMPLETE")
+    print(f"Total generations: {len(all_generations)}")
+    print(f"Saved to: {filename}")
+    print(f"{'='*80}")
     
     del diffusion_model
     del tokenizer
@@ -425,6 +518,38 @@ def evaluate_fast_dllm(
     device = "cuda",
     ):
 
+    # Determine output filename BEFORE loading model
+    model_name_clean = diffusion_model_name.replace("/", "_")
+    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing_fast_dllm.json"
+    
+    # Check for existing results and resume capability
+    all_generations = []
+    processed_questions = set()
+    
+    if os.path.exists(filename):
+        print(f"\n{'='*80}")
+        print(f"FOUND EXISTING RESULTS: {filename}")
+        print(f"{'='*80}")
+        try:
+            with open(filename, 'r') as f:
+                existing_data = json.load(f)
+                all_generations = existing_data.get('generations', [])
+                # Track which questions have been processed
+                for gen in all_generations:
+                    processed_questions.add(gen.get('question', ''))
+                print(f"Loaded {len(all_generations)} existing generations")
+                print(f"Will resume from question {len(all_generations) + 1}")
+        except Exception as e:
+            print(f"Warning: Could not load existing file: {e}")
+            print("Starting fresh...")
+            all_generations = []
+            processed_questions = set()
+    else:
+        print(f"\n{'='*80}")
+        print(f"STARTING NEW EVALUATION")
+        print(f"Output will be saved to: {filename}")
+        print(f"{'='*80}")
+
     diffusion_model, tokenizer = load_fast_diffusion_model_and_tokenizer(diffusion_model_name, device)
     diffusion_model.eval()
     device = diffusion_model.device
@@ -433,6 +558,7 @@ def evaluate_fast_dllm(
         diffusion_model_name = diffusion_model_name + "-base"
     is_base_model = 'base' in diffusion_model_name.lower()
 
+    # Create dataset - seed ensures same questions every time
     dataset = DATASET_MAP[data](
             tokenizer,
             subsample=num_evals_to_use,
@@ -442,38 +568,55 @@ def evaluate_fast_dllm(
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=False,  # CRITICAL: Don't shuffle to maintain reproducibility
         collate_fn=dataset.collate_fn,
     )
 
-    total_processed = 0
+    total_processed = len(all_generations) * n_samples if all_generations else 0
     wall_times = []
-    all_generations = []
+    skipped_count = 0
+    questions_remaining = len(dataset) - len(all_generations)
 
-    for batch in tqdm(dataloader, desc=f"Evaluating (total samples: {len(dataloader.dataset)})"):
+    # Create progress bar that shows actual questions processed, not batch iteration
+    pbar = tqdm(total=questions_remaining, 
+                desc=f"Processing remaining questions",
+                initial=0)
+
+    for batch_idx, batch in enumerate(dataloader):
+        # Check if this batch should be skipped (already processed)
+        questions = batch["questions"]
+        batch_questions_to_process = []
+        batch_indices_to_process = []
+        
+        for j, question in enumerate(questions):
+            if question not in processed_questions:
+                batch_questions_to_process.append(question)
+                batch_indices_to_process.append(j)
+        
+        # Skip if all questions in this batch are already processed
+        if not batch_questions_to_process:
+            skipped_count += len(questions)
+            continue
+        
         start_time = time.time()
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch.get("attention_mask", None)
         if attention_mask is not None:
             attention_mask = attention_mask.to(device)
         gt_answers = batch["answers"]
-        questions = batch["questions"]
         prompts = batch["prompts"]
 
-        batch_size = len(questions)
-        all_cleaned_texts = [[] for _ in range(batch_size)]
-        raw_generations = [[] for _ in range(batch_size)]
-        all_extracted_answers = [[] for _ in range(batch_size)]
+        batch_size_actual = len(questions)
+        all_cleaned_texts = [[] for _ in range(batch_size_actual)]
+        raw_generations = [[] for _ in range(batch_size_actual)]
+        all_extracted_answers = [[] for _ in range(batch_size_actual)]
         
         # Generate n_samples for each question in the batch
         for sample_idx in range(n_samples):
-            # CRITICAL: Set a unique seed for each sample to ensure diversity
-            # This ensures different outputs even with n_samples=32, 64, or more
-            if n_samples > 1:
-                unique_seed = int(uuid.uuid4().int % (2**(n_samples)))
-                torch.manual_seed(unique_seed)
-                torch.cuda.manual_seed_all(unique_seed)
-                np.random.seed(unique_seed % (2**(n_samples+1)))
+            # Note: We DON'T reset seeds here for reproducibility
+            # With temperature > 0: Sampling naturally creates diverse outputs
+            # With temperature = 0: All samples will be identical (expected for greedy)
+            # This ensures Pass@k results are reproducible across runs
             
             out = diffusion_model.generate(
                 input_ids=input_ids,
@@ -535,43 +678,53 @@ def evaluate_fast_dllm(
                 "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
                 "ground_truth": gt_answers[j],
             }
-            for j in range(batch_size)
+            for j in range(batch_size_actual)
         ]
         
-        # Store results in memory
-        all_generations.extend(example_result)
+        # Only add results for questions we actually processed
+        for j, result in enumerate(example_result):
+            if j in batch_indices_to_process:
+                all_generations.append(result)
+                processed_questions.add(result["question"])
         
-        total_processed += batch_size * n_samples
+        total_processed += len(batch_indices_to_process) * n_samples
         wall_times.append(time.time() - start_time)
+        
+        # Update progress bar for each question processed
+        pbar.update(len(batch_indices_to_process))
 
+        # CRITICAL: Save after EVERY batch to prevent data loss
+        avg_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0
+        with open(filename, "w") as f:
+            json.dump(
+                {
+                    "metrics": {
+                        "wall_time": avg_wall_time,
+                        "total_processed": total_processed,
+                        "num_completed": len(all_generations),
+                        "num_remaining": len(dataset) - len(all_generations),
+                    },
+                    "generations": all_generations,
+                },
+                f,
+                indent=2,
+            )
+        
         # CRITICAL: Clean up GPU memory after each batch to prevent 20GB->30GB+ leak
         # Without this, KV cache and intermediate tensors accumulate
         del out, input_ids, attention_mask
         torch.cuda.empty_cache()
 
-        idx = random.randint(0, len(questions) - 1)
-
-    avg_wall_time = sum(wall_times) / len(wall_times)
-    metrics = {
-        "wall_time": avg_wall_time,
-        "generations": all_generations,
-        "total_processed": total_processed,
-    }
-    model_name = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing_fast_dllm.json"
-    with open(filename, "w") as f:
-        json.dump(
-            {
-                "metrics": {
-                    "wall_time": metrics["wall_time"],
-                    "total_processed": metrics["total_processed"],
-                },
-                "generations": metrics["generations"],
-            },
-            f,
-            indent=2,
-        )
-    print(f"Saved generations to {filename}")
+    pbar.close()
+    
+    if skipped_count > 0:
+        print(f"\nSkipped {skipped_count} already-processed questions")
+    
+    print(f"\n{'='*80}")
+    print(f"EVALUATION COMPLETE")
+    print(f"Total generations: {len(all_generations)}")
+    print(f"Saved to: {filename}")
+    print(f"{'='*80}")
 
     del diffusion_model
     del tokenizer
@@ -589,8 +742,8 @@ def main():
     args = parser.parse_args()
 
     diffusion_model_name = args.diffusion_model_name
-    data = "gsm8k"
-    num_evals_to_use = 256
+    data = "countdown"
+    num_evals_to_use = 20
     few_shot = 4
     batch_size = 1
     gen_length = 256
@@ -604,7 +757,7 @@ def main():
     alg_temp = 0.0
     top_p = 0.95
     top_k = None
-    n_samples = 32
+    n_samples = 128
     use_cache=True
     dual_cache=True
     threshold = 0.9
@@ -614,6 +767,18 @@ def main():
         diffusion_model_name, data, num_evals_to_use, few_shot, batch_size, gen_length, diffusion_steps, temperature, cfg_scale, steps, block_length, remasking, alg, alg_temp, top_p, top_k, n_samples, use_cache, dual_cache, threshold, factor
         )
 
+    # filename = evaluate_auto_regressive_model(
+    #     model_name=diffusion_model_name,
+    #     data=data,
+    #     num_evals_to_use=num_evals_to_use,
+    #     few_shot=few_shot,
+    #     batch_size=batch_size,
+    #     gen_length=gen_length,
+    #     temperature=temperature,
+    #     top_p=top_p,
+    #     n_samples=n_samples,
+    # )
+    
     compute_metrics(
         results_file=filename,
         samples_per_problem=32,

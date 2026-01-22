@@ -1,8 +1,7 @@
 import torch
 import numpy as np
-import random
 from datasets import load_dataset
-from metrics.parsers import Parser, is_equiv
+from metrics.parsers import Parser
 
 
 GSM_SYSTEM_PROMPT = """You are a math expert. You will be given a question to solve. Solve it step by step. Wrap the final answer in a \\boxed{}. 
@@ -33,6 +32,8 @@ class GSM8KDataset(torch.utils.data.Dataset):
         self.load_test_dataset()
         self.create_few_shot_prompt()
 
+        # Use global numpy random state for reproducible sampling
+        # This ensures the same questions are selected each time with the same seed
         self.subsample = (
             np.random.choice(len(self.dataset), subsample, replace=False)
             if subsample != -1
@@ -80,8 +81,9 @@ class GSM8KDataset(torch.utils.data.Dataset):
         if self.num_examples <= 0:
             return []
         train_data = load_dataset("gsm8k", "main", split="train")
-        examples = random.sample(range(len(train_data)), self.num_examples)
-        return [train_data[example] for example in examples]
+        # Use numpy random choice for reproducibility with global seed
+        examples = np.random.choice(len(train_data), self.num_examples, replace=False)
+        return [train_data[int(example)] for example in examples]
 
     def create_few_shot_prompt(self):
         """Create few-shot prompt from dataset examples"""

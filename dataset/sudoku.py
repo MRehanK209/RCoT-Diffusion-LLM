@@ -3,7 +3,7 @@ import pandas as pd
 from dataset.gsm8k import GSM8KDataset
 from datasets import Dataset as HFDataset
 import os
-from metrics.parsers import Parser
+import numpy as np
 
 SUDOKU_SYSTEM_PROMPT = """Please solve the following 4x4 Sudoku puzzle. The puzzle is provided as a 16-character string reading left-to-right, top-to-bottom, where '0' represents empty cells.
 
