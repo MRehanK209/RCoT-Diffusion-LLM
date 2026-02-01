@@ -8,10 +8,12 @@ Compare two model evaluation results:
 import json
 import re
 import numpy as np
-from scipy.special import comb
 from typing import Optional, List, Dict, Any
 import hashlib
 from pathlib import Path
+
+# Import pass@k functions from centralized metrics module
+from metrics.pass_k import pass_at_k, compute_pass_at_k
 
 
 # ============================================================================
@@ -103,50 +105,11 @@ def check_answer(prediction: str, ground_truth: str) -> bool:
 
 
 # ============================================================================
-# PASS@K METRIC FUNCTIONS (User's specification)
+# PASS@K METRIC FUNCTIONS
 # ============================================================================
-
-def pass_at_k(n: int, c: int, k: int) -> float:
-    """
-    Calculate pass@k metric for a single problem.
-    
-    Args:
-        n: Total number of samples generated
-        c: Number of correct samples
-        k: Number of attempts to consider
-    
-    Returns:
-        Probability of at least one correct solution in k attempts
-    """
-    if n < k:
-        return 0.0
-    if c == 0:
-        return 0.0
-    
-    return 1.0 - (comb(n - c, k) / comb(n, k))
-
-
-def compute_pass_at_k(results: list, k_values: list) -> dict:
-    """
-    Compute pass@k for multiple k values.
-    
-    Args:
-        results: List of dicts with 'total_samples' and 'correct_count'
-        k_values: List of k values to compute
-        
-    Returns:
-        Dictionary mapping k to average pass@k score
-    """
-    pass_k_results = {}
-    for k in k_values:
-        scores = []
-        for result in results:
-            n = result['total_samples']
-            c = result['correct_count']
-            scores.append(pass_at_k(n, c, k))
-        pass_k_results[k] = np.mean(scores)
-    
-    return pass_k_results
+# Imported from metrics.pass_k module (centralized implementation)
+# - pass_at_k(n, c, k): Calculate pass@k for a single problem
+# - compute_pass_at_k(results, k_values): Compute pass@k for multiple k values
 
 
 # ============================================================================

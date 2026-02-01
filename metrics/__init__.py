@@ -4,7 +4,7 @@ Based on d1 eval framework patterns.
 """
 
 from .parsers import Parser, is_equiv, evaluate_equation, validate_equation
-from .pass_k import pass_at_k, compute_pass_at_k
+from .pass_k import pass_at_k, compute_pass_at_k, compute_detailed_metrics
 
 __all__ = [
     'Parser',
@@ -13,5 +13,6 @@ __all__ = [
     'validate_equation',
     'pass_at_k',
     'compute_pass_at_k',
+    'compute_detailed_metrics',
 ]
 

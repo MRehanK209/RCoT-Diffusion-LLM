@@ -1036,18 +1036,6 @@ def main():
         n_samples=n_samples,
     )
 
-    # filename = evaluate_auto_regressive_model(
-    #     model_name=diffusion_model_name,
-    #     data=data,
-    #     num_evals_to_use=num_evals_to_use,
-    #     few_shot=few_shot,
-    #     batch_size=batch_size,
-    #     gen_length=gen_length,
-    #     temperature=temperature,
-    #     top_p=top_p,
-    #     n_samples=n_samples,
-    # )
-    
     # filename = evaluate_vllm_model(
     #     model_name=diffusion_model_name,
     #     data=data,
