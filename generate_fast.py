@@ -21,7 +21,8 @@ def _dream_generate(
     max_new_tokens: int = 256,
     steps: int = 8,
     block_length: int = 32, 
-    algorithm: str = "confidence_threshold",
+    alg: str = "confidence_threshold",  # Renamed from algorithm for consistency with caller
+    alg_temp: float | None = None,  # Added for consistency (used internally by Dream)
     threshold: float = 0.9,
     temperature: float = 0.0,
     top_p: float | None = None,
@@ -45,7 +46,8 @@ def _dream_generate(
         temperature=temperature,
         top_p=top_p,
         top_k=top_k,
-        alg=algorithm,
+        alg=alg,
+        alg_temp=alg_temp,
         threshold=threshold,
         dual_cache=dual_cache,
     )
@@ -63,7 +65,7 @@ def _llada_generate(
     remasking: str = "low_confidence",
     mask_id: int = 126336,
     threshold=None,
-    parallel_factor=None,
+    factor=None,  # Parallel decoding factor (alternative to threshold)
     use_cache: bool = True,
     dual_cache: bool = True,
     **kwargs,
@@ -90,7 +92,7 @@ def _llada_generate(
                 remasking=remasking,
                 mask_id=mask_id,
                 threshold=threshold,
-                factor=parallel_factor,
+                factor=factor,
             )
         else:
             out, _nfe = generate_with_prefix_cache(
@@ -103,7 +105,7 @@ def _llada_generate(
                 remasking=remasking,
                 mask_id=mask_id,
                 threshold=threshold,
-                factor=parallel_factor,
+                factor=factor,
             )
     else:
         out, _nfe = generate(
@@ -116,7 +118,7 @@ def _llada_generate(
             remasking=remasking,
             mask_id=mask_id,
             threshold=threshold,
-            factor=parallel_factor,
+            factor=factor,
         )
 
     # Return just the tensor (full sequence), matching the official implementation
@@ -136,11 +138,29 @@ def load_fast_diffusion_model_and_tokenizer(
     device_t = torch.device(device)
     name = model_name_or_path.lower()
 
+    # Check if flash_attn is available (needed for LLaDA)
+    flash_attn_available = False
+    flash_attn_error = None
+    try:
+        from flash_attn import flash_attn_func
+        flash_attn_available = True
+    except ImportError as e:
+        flash_attn_error = f"ImportError: {e}"
+    except Exception as e:
+        # Catch other errors like CUDA version mismatch, etc.
+        flash_attn_error = f"{type(e).__name__}: {e}"
+
     if "dream" in name:
+        # Dream officially uses SDPA (Scaled Dot-Product Attention) built into PyTorch 2.0+
+        # See: https://github.com/HKUNLP/Dream - "Dream uses the SdpaAttention built in torch"
+        # SDPA is fast and doesn't require flash-attn package
+        print("Dream: Using SDPA (Scaled Dot-Product Attention) - PyTorch built-in")
+        
         model = DreamModel.from_pretrained(
             model_name_or_path,
             torch_dtype=dtype,
             trust_remote_code=True,
+            attn_implementation="sdpa",  # Official recommendation for Dream
         ).eval().to(device_t)
 
         # Use the block/cached mixin (supports dual_cache etc.)
@@ -151,9 +171,19 @@ def load_fast_diffusion_model_and_tokenizer(
         model.generate = types.MethodType(_dream_generate, model)
 
     elif "llada" in name:
-        # Match the official eval_llada.py approach
+        # LLaDA uses custom flash_attn integration via config flag
+        # Requires flash-attn package for best performance
         config = AutoConfig.from_pretrained(model_name_or_path)
-        config.flash_attention = True
+        config.flash_attention = flash_attn_available
+        
+        if flash_attn_available:
+            print("LLaDA: Flash Attention ENABLED (flash_attn package found)")
+        else:
+            print("WARNING: flash_attn not available for LLaDA.")
+            if flash_attn_error:
+                print(f"         Error: {flash_attn_error}")
+            print("         Install with: pip install flash-attn --no-build-isolation")
+            print("         LLaDA performance will be significantly slower without Flash Attention!")
         
         model = LLaDAModelLM.from_pretrained(
             model_name_or_path,

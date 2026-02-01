@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
+from vllm import LLM, SamplingParams
 
 from dataset.gsm8k import GSM8KDataset
 from dataset.math500 import MATH500Dataset
@@ -499,28 +499,32 @@ def evaluate_fast_dllm(
     few_shot = 0,
     batch_size = 16,
     gen_length = 128,
-    diffusion_steps = 64,
+    steps = 64,  # Number of diffusion steps (divided across blocks)
     temperature = 0.2,
-    cfg_scale = 0.0,
-    steps = 64,
-    block_length = 32,
-    remasking = "low_confidence",
-    alg = "confidence_threshold",
-    alg_temp = 0.0,
-    top_p = 0.95,
-    top_k = None,
+    block_length = 32,  # Block size for block-wise decoding
+    
+    # LLaDA-specific parameters
+    remasking = "low_confidence",  # LLaDA: 'low_confidence' or 'random'
+    use_cache = True,  # LLaDA: Enable KV cache
+    factor = None,  # LLaDA: Factor for dynamic parallel decoding
+    
+    # Dream-specific parameters
+    alg = "confidence_threshold",  # Dream: 'confidence_threshold' or 'origin'
+    alg_temp = 0.0,  # Dream: Temperature for algorithm sampling
+    top_p = 0.95,  # Dream: Nucleus sampling
+    top_k = None,  # Dream: Top-k sampling
+    
+    # Shared parameters
+    dual_cache = True,  # Enable dual cache (both LLaDA and Dream)
+    threshold = None,  # Confidence threshold for parallel decoding
     n_samples = 1,
-    use_cache=True,
-    dual_cache=True,
-    threshold = None,
-    factor = None,
     output_dir = "results",
     device = "cuda",
     ):
 
     # Determine output filename BEFORE loading model
     model_name_clean = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing_fast_dllm.json"
+    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_fast_dllm.json"
     
     # Check for existing results and resume capability
     all_generations = []
@@ -618,26 +622,29 @@ def evaluate_fast_dllm(
             # With temperature = 0: All samples will be identical (expected for greedy)
             # This ensures Pass@k results are reproducible across runs
             
+            # Unified generate call for both LLaDA and Dream
+            # - LLaDA uses: steps, block_length, remasking, use_cache, dual_cache, threshold, factor
+            # - Dream uses: steps, block_length, alg, alg_temp, top_p, top_k, dual_cache, threshold
+            # Unused params for each model are safely ignored via **kwargs
             out = diffusion_model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_new_tokens=gen_length,
                 temperature=temperature,
-                num_diffusion_steps=steps,
-                steps=steps,  # Dream uses 'steps'
-                block_length=block_length,  # LLaDA only
-                cfg_scale=cfg_scale,  # LLaDA only
-                remasking=remasking,  # LLaDA only
-                logits_eos_inf=True,  # LLaDA: Prevent early EOS during diffusion
-                confidence_eos_eot_inf=False,  # LLaDA: Allow EOS in confidence calculation
-                alg=alg,  # Dream only
-                alg_temp=alg_temp,  # Dream only
-                top_p=top_p,  # Dream only
-                top_k=top_k,  # Dream only
+                steps=steps,
+                block_length=block_length,
+                # LLaDA-specific
+                remasking=remasking,
                 use_cache=use_cache,
+                factor=factor,
+                # Dream-specific
+                alg=alg,
+                alg_temp=alg_temp,
+                top_p=top_p,
+                top_k=top_k,
+                # Shared
                 dual_cache=dual_cache,
                 threshold=threshold,
-                factor=factor,
             )
 
             # Slice only the generated tokens (after the input)
@@ -735,6 +742,252 @@ def evaluate_fast_dllm(
     
     return filename
 
+
+def evaluate_vllm_model(
+    model_name,
+    data = "gsm8k",
+    num_evals_to_use = 256,
+    few_shot = 4,
+    batch_size = 1,  # vLLM handles batching internally
+    gen_length = 256,
+    temperature = 0.7,
+    top_p = 0.95,
+    top_k = -1,
+    n_samples = 128,
+    output_dir = "results",
+    tensor_parallel_size = 1,
+    gpu_memory_utilization = 0.9,
+    ):
+
+    """
+    Evaluate an auto-regressive model using vLLM for optimized inference.
+    
+    Args:
+        model_name: HuggingFace model path
+        data: Dataset name (gsm8k, math, countdown, sudoku)
+        num_evals_to_use: Number of questions to evaluate
+        few_shot: Number of few-shot examples
+        batch_size: Must be 1 for this implementation (vLLM handles internal batching)
+        gen_length: Maximum new tokens to generate
+        temperature: Sampling temperature (0.0 for greedy)
+        top_p: Nucleus sampling parameter
+        top_k: Top-k sampling parameter
+        n_samples: Number of generations per question
+        output_dir: Directory to save results
+        tensor_parallel_size: Number of GPUs for tensor parallelism
+        gpu_memory_utilization: Fraction of GPU memory to use (0.0-1.0)
+    
+    Returns:
+        filename: Path to saved results JSON
+    """
+    
+    # Determine output filename BEFORE loading model
+    model_name_clean = model_name.replace("/", "_")
+    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_vllm.json"
+    
+    # Check for existing results and resume capability
+    all_generations = []
+    processed_questions = set()
+    
+    if os.path.exists(filename):
+        print(f"\n{'='*80}")
+        print(f"FOUND EXISTING RESULTS: {filename}")
+        print(f"{'='*80}")
+        try:
+            with open(filename, 'r') as f:
+                existing_data = json.load(f)
+                all_generations = existing_data.get('generations', [])
+                # Track which questions have been processed
+                for gen in all_generations:
+                    processed_questions.add(gen.get('question', ''))
+                print(f"Loaded {len(all_generations)} existing generations")
+                print(f"Will resume from question {len(all_generations) + 1}")
+        except Exception as e:
+            print(f"Warning: Could not load existing file: {e}")
+            print("Starting fresh...")
+            all_generations = []
+            processed_questions = set()
+    else:
+        print(f"\n{'='*80}")
+        print(f"STARTING NEW EVALUATION")
+        print(f"Output will be saved to: {filename}")
+        print(f"{'='*80}")
+    
+    # Initialize vLLM model
+    print(f"\nInitializing vLLM with model: {model_name}")
+    llm = LLM(
+        model=model_name,
+        tensor_parallel_size=tensor_parallel_size,
+        gpu_memory_utilization=gpu_memory_utilization,
+        trust_remote_code=True,
+        dtype="bfloat16",
+        max_model_len=None,  # Auto-detect
+    )
+    
+    # Get tokenizer from vLLM
+    tokenizer = llm.get_tokenizer()
+    
+    # Determine if model is base or instruct
+    is_base_model = 'base' in model_name.lower() or 'instruct' not in model_name.lower()
+    
+    # Create dataset - seed ensures same questions every time
+    dataset = DATASET_MAP[data](
+        tokenizer,
+        subsample=num_evals_to_use,
+        num_examples=few_shot,
+        is_base_model=is_base_model,
+    )
+    
+    # Use batch_size=1 for DataLoader (process one question at a time)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=dataset.collate_fn,
+    )
+    
+    total_processed = len(all_generations) * n_samples if all_generations else 0
+    wall_times = []
+    skipped_count = 0
+    questions_remaining = len(dataset) - len(all_generations)
+    
+    # Create progress bar that shows actual questions processed
+    pbar = tqdm(total=questions_remaining, 
+                desc=f"Processing remaining questions",
+                initial=0)
+    
+    for batch_idx, batch in enumerate(dataloader):
+        # Check if this batch should be skipped (already processed)
+        questions = batch["questions"]
+        batch_questions_to_process = []
+        batch_indices_to_process = []
+        
+        for j, question in enumerate(questions):
+            if question not in processed_questions:
+                batch_questions_to_process.append(question)
+                batch_indices_to_process.append(j)
+        
+        # Skip if all questions in this batch are already processed
+        if not batch_questions_to_process:
+            skipped_count += len(questions)
+            continue
+        
+        start_time = time.time()
+        
+        # Get the prompt text (vLLM works with text, not token IDs)
+        prompts = batch["prompts"]
+        gt_answers = batch["answers"]
+        
+        # Since batch_size=1, we only have one question
+        prompt = prompts[0]
+        question = questions[0]
+        gt_answer = gt_answers[0]
+        
+        # Process outputs
+        all_cleaned_texts = []
+        raw_generations = []
+        all_extracted_answers = []
+        
+        # Generate samples SEQUENTIALLY (one at a time) like standard HuggingFace
+        for sample_idx in range(n_samples):
+            # Configure sampling parameters for SINGLE generation
+            sampling_params = SamplingParams(
+                n=1,  # Generate ONE sample at a time
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k if top_k > 0 else -1,
+                max_tokens=gen_length,
+                seed=None if temperature > 0 else 2,  # Fixed seed only for greedy
+            )
+            
+            # Generate with vLLM (single sample)
+            outputs = llm.generate([prompt], sampling_params, use_tqdm=False)
+            
+            # vLLM returns one RequestOutput per prompt
+            output = outputs[0]
+            completion_output = output.outputs[0]  # Only one output since n=1
+            
+            text = completion_output.text
+            raw_generations.append(text)
+            
+            # Truncate at EOS tokens
+            eos_markers = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
+            cleaned_text = text
+            for marker in eos_markers:
+                if marker in cleaned_text:
+                    cleaned_text = cleaned_text.split(marker)[0]
+                    break
+            all_cleaned_texts.append(cleaned_text)
+            
+            # Extract the boxed answer from the generation
+            try:
+                extracted_answer = Parser.extract_answer_boxed(cleaned_text)
+                # Try to convert to float for numerical answers
+                try:
+                    extracted_answer = float(extracted_answer)
+                except (ValueError, TypeError):
+                    # Keep as string if not a number
+                    pass
+            except Exception as e:
+                extracted_answer = None
+            all_extracted_answers.append(extracted_answer)
+        
+        # Create result (use list if n_samples > 1, single value otherwise)
+        result = {
+            "question": question,
+            "prompt_input": prompt,
+            "generations": all_cleaned_texts if n_samples > 1 else all_cleaned_texts[0],
+            "raw_generations": raw_generations if n_samples > 1 else raw_generations[0],
+            "extracted_answer": all_extracted_answers if n_samples > 1 else all_extracted_answers[0],
+            "ground_truth": gt_answer,
+        }
+        
+        all_generations.append(result)
+        processed_questions.add(question)
+        
+        total_processed += n_samples
+        wall_times.append(time.time() - start_time)
+        
+        # Update progress bar
+        pbar.update(1)
+        
+        # CRITICAL: Save after EVERY question to prevent data loss
+        avg_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0
+        with open(filename, "w") as f:
+            json.dump(
+                {
+                    "metrics": {
+                        "wall_time": avg_wall_time,
+                        "total_processed": total_processed,
+                        "num_completed": len(all_generations),
+                        "num_remaining": len(dataset) - len(all_generations),
+                    },
+                    "generations": all_generations,
+                },
+                f,
+                indent=2,
+            )
+    
+    pbar.close()
+    
+    if skipped_count > 0:
+        print(f"\nSkipped {skipped_count} already-processed questions")
+    
+    print(f"\n{'='*80}")
+    print(f"EVALUATION COMPLETE")
+    print(f"Total generations: {len(all_generations)}")
+    print(f"Saved to: {filename}")
+    print(f"{'='*80}")
+    
+    # Clean up
+    del llm
+    del dataset
+    del dataloader
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    return filename
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -742,30 +995,46 @@ def main():
     args = parser.parse_args()
 
     diffusion_model_name = args.diffusion_model_name
-    data = "countdown"
-    num_evals_to_use = 20
-    few_shot = 4
+    data = "gsm8k"
+    num_evals_to_use = 256
+    few_shot = 5         
     batch_size = 1
     gen_length = 256
-    diffusion_steps = 256
-    temperature = 0.7
-    cfg_scale = 0.0
-    steps = 256
     block_length = 32
+    steps = gen_length   
+    use_cache = True
+    dual_cache = True
+    threshold = 0.9      
+    factor = None        
     remasking = "low_confidence"
-    alg = "entropy"
+    alg = "confidence_threshold"
     alg_temp = 0.0
     top_p = 0.95
     top_k = None
-    n_samples = 128
-    use_cache=True
-    dual_cache=True
-    threshold = 0.9
-    factor = 1.0
+    temperature = 0.7    
+    n_samples = 128        
 
     filename = evaluate_fast_dllm(
-        diffusion_model_name, data, num_evals_to_use, few_shot, batch_size, gen_length, diffusion_steps, temperature, cfg_scale, steps, block_length, remasking, alg, alg_temp, top_p, top_k, n_samples, use_cache, dual_cache, threshold, factor
-        )
+        diffusion_model_name=diffusion_model_name,
+        data=data,
+        num_evals_to_use=num_evals_to_use,
+        few_shot=few_shot,
+        batch_size=batch_size,
+        gen_length=gen_length,
+        steps=steps,
+        temperature=temperature,
+        block_length=block_length,
+        remasking=remasking,
+        use_cache=use_cache,
+        factor=factor,
+        alg=alg,
+        alg_temp=alg_temp,
+        top_p=top_p,
+        top_k=top_k,
+        dual_cache=dual_cache,
+        threshold=threshold,
+        n_samples=n_samples,
+    )
 
     # filename = evaluate_auto_regressive_model(
     #     model_name=diffusion_model_name,
@@ -779,10 +1048,22 @@ def main():
     #     n_samples=n_samples,
     # )
     
+    # filename = evaluate_vllm_model(
+    #     model_name=diffusion_model_name,
+    #     data=data,
+    #     num_evals_to_use=num_evals_to_use,
+    #     few_shot=few_shot,
+    #     batch_size=batch_size,
+    #     gen_length=gen_length,
+    #     temperature=temperature,
+    #     top_p=top_p,
+    #     n_samples=n_samples,
+    # )
+
     compute_metrics(
         results_file=filename,
-        samples_per_problem=32,
-        k_values=[1, 2, 4, 8, 16, 32]
+        samples_per_problem=128,
+        k_values=[1, 2, 4, 8, 16, 32, 64, 128]
     )
 
 if __name__ == "__main__":
