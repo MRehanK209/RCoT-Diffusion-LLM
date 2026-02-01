@@ -1,0 +1,50 @@
+[project]
+name = "dllm"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  # Core
+  "torch>=2.9.1",
+  "torchvision>=0.24.1",
+  "torchaudio>=2.9.1",
+
+  # Transformers & HF
+  "transformers>=4.57.6",
+  "huggingface-hub>=0.34.0,<1.0",
+  "tokenizers>0.21.4",
+  "accelerate==0.34.2",
+
+  # Datasets
+  "datasets==2.14.6",
+  "fsspec>=2023.1.0,<=2023.10.0",
+  "pyarrow>=8.0.0,<15.0.0",
+
+  # Eval
+  "evaluate==0.4.0",
+
+  # vLLM
+  "vllm==0.14.0",
+
+  # Utilities
+  "numpy<2.0",
+  "scipy",
+  "tqdm",
+  "pandas",
+  "packaging",
+
+  # Build helper (optional; only needed if you often compile)
+  "ninja",
+
+  # Fast-dLLM extras
+  "sentencepiece",
+  "einops>=0.6.1",
+  "ipykernel",
+  "python-dotenv",
+
+  "flash-attn>=2.5.0"
+]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = ["torch"]
+
+# MAX_JOBS=4 uv sync --no-build-isolation
