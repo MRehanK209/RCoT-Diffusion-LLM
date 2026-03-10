@@ -21,13 +21,14 @@ def _dream_generate(
     max_new_tokens: int = 256,
     steps: int = 8,
     block_length: int = 32, 
-    alg: str = "confidence_threshold",  # Renamed from algorithm for consistency with caller
-    alg_temp: float | None = None,  # Added for consistency (used internally by Dream)
+    alg: str = "entropy",
+    alg_temp: float | None = None,
     threshold: float = 0.9,
     temperature: float = 0.0,
     top_p: float | None = None,
     top_k: int | None = None,
-    dual_cache: bool = True,
+    dual_cache: bool = False,
+    cache_refresh_steps: int = 0,
     return_dict_in_generate: bool = False,
     **kwargs,
 ):
@@ -50,6 +51,7 @@ def _dream_generate(
         alg_temp=alg_temp,
         threshold=threshold,
         dual_cache=dual_cache,
+        cache_refresh_steps=cache_refresh_steps,
     )
     return out if return_dict_in_generate else out.sequences
 

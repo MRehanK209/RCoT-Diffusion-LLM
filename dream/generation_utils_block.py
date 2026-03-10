@@ -373,6 +373,7 @@ class DreamGenerationMixin:
         threshold = kwargs.get("threshold", 0.9)
         block_length = kwargs.get("block_length", 32)
         dual_cache = kwargs.get("dual_cache", False)
+        cache_refresh_steps = kwargs.get("cache_refresh_steps", 0)
 
         result = self._sample(
             input_ids,
@@ -380,7 +381,8 @@ class DreamGenerationMixin:
             generation_config=generation_config,
             threshold=threshold,
             block_length=block_length,
-            dual_cache=dual_cache
+            dual_cache=dual_cache,
+            cache_refresh_steps=cache_refresh_steps,
         )
         return result
 
@@ -392,6 +394,7 @@ class DreamGenerationMixin:
         threshold: Optional[float] = 0.9,
         block_length: Optional[int] = 32,
         dual_cache: bool = False,
+        cache_refresh_steps: int = 0,
     ) -> Union[DreamModelOutput, torch.LongTensor]:
         # init values
         
@@ -469,29 +472,48 @@ class DreamGenerationMixin:
                 
             i = 1
             while True:
-                # Use cache for generation
                 if dual_cache:
                     mask_index = (x[:, current_block_start:current_block_end] == mask_token_id)
                 else:
                     mask_index = (x[:, current_block_start:] == mask_token_id)
-                
-                # Prepare attention mask for cached generation
-                if attention_mask != "full":
-                    # Adjust attention mask for current position
-                    current_attention_mask = attention_mask[:, :, :, current_block_start:]
+
+                do_refresh = (cache_refresh_steps > 0 and i > 1 and i % cache_refresh_steps == 0)
+
+                if do_refresh:
+                    refresh_output = self(x, attention_mask, tok_idx, use_cache=True)
+                    past_key_values = refresh_output.past_key_values
+                    full_logits = refresh_output.logits
+                    full_logits = torch.cat([full_logits[:, :1], full_logits[:, :-1]], dim=1)
+                    if dual_cache:
+                        logits = full_logits[:, current_block_start:current_block_end]
+                    else:
+                        logits = full_logits[:, current_block_start:]
+                    if not dual_cache:
+                        new_past_key_values = []
+                        for li in range(len(past_key_values)):
+                            new_past_key_values.append(())
+                            for ki in range(len(past_key_values[li])):
+                                new_past_key_values[li] += (past_key_values[li][ki][:, :current_block_start, :],)
+                        past_key_values = new_past_key_values
                 else:
-                    current_attention_mask = attention_mask
-                
-                if dual_cache:
-                    model_output = self(x[:, current_block_start:current_block_end], current_attention_mask, 
-                                    tok_idx[:, current_block_start:current_block_end] if tok_idx is not None else None, 
-                                    past_key_values=past_key_values, use_cache=True, dual_cache=dual_cache, replace_position=replace_position)
-                else:
-                    model_output = self(x[:, current_block_start:], current_attention_mask, 
-                                    tok_idx[:, current_block_start:] if tok_idx is not None else None, 
-                                    past_key_values=past_key_values, use_cache=True)
-                logits = model_output.logits
-                logits = torch.cat([logits[:,:1], logits[:, :-1]], dim=1)
+                    if attention_mask != "full":
+                        if dual_cache:
+                            current_attention_mask = attention_mask[:, :, current_block_start:current_block_end, :]
+                        else:
+                            current_attention_mask = attention_mask[:, :, current_block_start:, :]
+                    else:
+                        current_attention_mask = attention_mask
+
+                    if dual_cache:
+                        model_output = self(x[:, current_block_start:current_block_end], current_attention_mask, 
+                                        tok_idx[:, current_block_start:current_block_end] if tok_idx is not None else None, 
+                                        past_key_values=past_key_values, use_cache=True, dual_cache=dual_cache, replace_position=replace_position)
+                    else:
+                        model_output = self(x[:, current_block_start:], current_attention_mask, 
+                                        tok_idx[:, current_block_start:] if tok_idx is not None else None, 
+                                        past_key_values=past_key_values, use_cache=True)
+                    logits = model_output.logits
+                    logits = torch.cat([logits[:,:1], logits[:, :-1]], dim=1)
                 if alg == 'confidence_threshold':
                     mask_logits = logits[mask_index]
                 
@@ -508,54 +530,87 @@ class DreamGenerationMixin:
                     full_confidence[mask_index] = confidence
                     full_confidence[:, block_length:] = -torch.inf
                     
-                    current_transfer_tokens = (x[:, current_block_start:current_block_end] == mask_token_id).sum()
-                    
-                    selected_confidence, select_index = torch.topk(full_confidence, current_transfer_tokens)
-                    transfer_index = torch.zeros_like(x_, device=x.device, dtype=torch.bool)
-                    
-                    select_index = select_index.to(x.device)
-                    transfer_index[0, select_index[0]] = True
-                    for k in range(1, current_transfer_tokens):
-                        if selected_confidence[0, k] < threshold:
-                            transfer_index[0, select_index[0, k]] = False
-                    if dual_cache:
-                        x[:, current_block_start:current_block_end][transfer_index] = x_[transfer_index]
-                    else:
-                        x[:, current_block_start:][transfer_index] = x_[transfer_index]
+                    B = x.size(0)
+                    per_batch_mask_counts = (x[:, current_block_start:current_block_end] == mask_token_id).sum(dim=1)  # (B,)
+                    max_k = per_batch_mask_counts.max().item()
+
+                    if max_k > 0:
+                        selected_confidence, select_index = torch.topk(full_confidence, max_k, dim=1)
+                        transfer_index = torch.zeros_like(x_, device=x.device, dtype=torch.bool)
+
+                        for b in range(B):
+                            k_b = per_batch_mask_counts[b].item()
+                            if k_b == 0:
+                                continue
+                            transfer_index[b, select_index[b, :k_b]] = True
+                            for ki in range(1, k_b):
+                                if selected_confidence[b, ki] < threshold:
+                                    transfer_index[b, select_index[b, ki]] = False
+
+                        if dual_cache:
+                            x[:, current_block_start:current_block_end][transfer_index] = x_[transfer_index]
+                        else:
+                            x[:, current_block_start:][transfer_index] = x_[transfer_index]
+                    i += 1
                 else:
                     if i == steps_per_block:
                         break
                     t = timesteps[i]
                     s = timesteps[i + 1]
                     mask_index[:, block_length:] = False
-                    mask_logits = logits[mask_index]
-                    confidence, x0 = sample_tokens(mask_logits, temperature, top_p=top_p, top_k=top_k, neg_entropy=True)
-                    num_mask_token = mask_index.sum() / mask_index.shape[0]
-                    number_transfer_tokens = int(num_mask_token * (1 - s / t)) if i < steps_per_block - 1 else int(num_mask_token)
-                    if dual_cache:
-                        full_confidence = torch.full_like(x[:, current_block_start:current_block_end], -torch.inf, device=self.device, dtype=logits.dtype)
+
+                    if alg == 'origin':
+                        mask_logits = logits[mask_index]
+                        p_transfer = 1 - s / t if i < steps_per_block - 1 else 1
+                        x0 = torch.zeros(mask_logits.shape[0], device=self.device, dtype=torch.long) + mask_token_id
+                        transfer_index_t_s = torch.rand(x0.shape[0], device=self.device) < p_transfer
+                        if transfer_index_t_s.any():
+                            _, x0[transfer_index_t_s] = sample_tokens(
+                                mask_logits[transfer_index_t_s], temperature=temperature,
+                                top_p=top_p, top_k=top_k)
+                        if dual_cache:
+                            x[:, current_block_start:current_block_end][mask_index] = x0.clone()
+                        else:
+                            x[:, current_block_start:][mask_index] = x0.clone()
                     else:
-                        full_confidence = torch.full_like(x[:, current_block_start:], -torch.inf, device=self.device, dtype=logits.dtype)
-                    full_confidence[mask_index] = confidence
-                    full_confidence[:, block_length:] = -torch.inf
-                    
-                    if number_transfer_tokens > 0:
-                        if alg_temp is None or alg_temp == 0:
-                            _, transfer_index = torch.topk(full_confidence, number_transfer_tokens)
+                        mask_logits = logits[mask_index]
+                        if alg == 'maskgit_plus':
+                            confidence, x0 = sample_tokens(mask_logits, temperature, top_p=top_p, top_k=top_k)
+                        elif alg == 'topk_margin':
+                            confidence, x0 = sample_tokens(mask_logits, temperature, top_p=top_p, top_k=top_k, margin_confidence=True)
+                        elif alg == 'entropy':
+                            confidence, x0 = sample_tokens(mask_logits, temperature, top_p=top_p, top_k=top_k, neg_entropy=True)
                         else:
-                            full_confidence = full_confidence / alg_temp
-                            full_confidence = F.softmax(full_confidence, dim=-1)
-                            transfer_index = torch.multinomial(full_confidence, num_samples=number_transfer_tokens)
+                            raise RuntimeError(f"Unknown alg: {alg}")
+                        per_row_masks = mask_index.sum(dim=1)  # (B,)
+                        avg_mask_token = per_row_masks.float().mean()
+                        number_transfer_tokens = int(avg_mask_token * (1 - s / t)) if i < steps_per_block - 1 else int(avg_mask_token)
                         if dual_cache:
-                            x_ = torch.zeros_like(x[:, current_block_start:current_block_end], device=self.device, dtype=torch.long) + mask_token_id
+                            full_confidence = torch.full_like(x[:, current_block_start:current_block_end], -torch.inf, device=self.device, dtype=logits.dtype)
                         else:
-                            x_ = torch.zeros_like(x[:, current_block_start:], device=self.device, dtype=torch.long) + mask_token_id
-                        x_[mask_index] = x0.clone()
-                        row_indices = torch.arange(x.size(0), device=self.device).unsqueeze(1).expand_as(transfer_index)
-                        if dual_cache:
-                            x[:, current_block_start:current_block_end][row_indices,transfer_index] = x_[row_indices,transfer_index]
-                        else:
-                            x[:, current_block_start:][row_indices,transfer_index] = x_[row_indices,transfer_index]
+                            full_confidence = torch.full_like(x[:, current_block_start:], -torch.inf, device=self.device, dtype=logits.dtype)
+                        full_confidence[mask_index] = confidence
+                        full_confidence[:, block_length:] = -torch.inf
+
+                        if number_transfer_tokens > 0:
+                            if alg_temp is None or alg_temp == 0:
+                                _, transfer_index = torch.topk(full_confidence, number_transfer_tokens)
+                            else:
+                                full_confidence = full_confidence / alg_temp
+                                full_confidence = F.softmax(full_confidence, dim=-1)
+                                transfer_index = torch.multinomial(full_confidence, num_samples=number_transfer_tokens)
+                            if dual_cache:
+                                x_ = torch.zeros_like(x[:, current_block_start:current_block_end], device=self.device, dtype=torch.long) + mask_token_id
+                            else:
+                                x_ = torch.zeros_like(x[:, current_block_start:], device=self.device, dtype=torch.long) + mask_token_id
+                            x_[mask_index] = x0.clone()
+                            transfer_bool = torch.zeros_like(full_confidence, dtype=torch.bool)
+                            transfer_bool.scatter_(1, transfer_index, True)
+                            transfer_bool = transfer_bool & mask_index
+                            if dual_cache:
+                                x[:, current_block_start:current_block_end][transfer_bool] = x_[transfer_bool]
+                            else:
+                                x[:, current_block_start:][transfer_bool] = x_[transfer_bool]
                     i += 1
 
                 if (x[:, current_block_start:current_block_end] == mask_token_id).sum() == 0:

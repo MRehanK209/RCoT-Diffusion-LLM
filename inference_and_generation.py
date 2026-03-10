@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import random
 import time
 import gc
@@ -12,9 +13,12 @@ from vllm import LLM, SamplingParams
 
 from dataset.gsm8k import GSM8KDataset
 from dataset.math500 import MATH500Dataset
-from dataset.countdown import CTDDataset
+from dataset.countdown import CTDDataset, CTD4Dataset, CTD5Dataset, CTDLegacyDataset, cd_score_single
 from dataset.sudoku import SudokuDataset
-from metrics.parsers import Parser
+from dataset.counting_letters import CountingLettersDataset
+from dataset.math_beyond import MATHBeyondDataset
+from dataset.aime import AIME24Dataset, AIME25Dataset, AIMECombinedDataset
+from metrics.parsers import Parser, validate_equation, evaluate_equation
 
 from generate_fast import load_fast_diffusion_model_and_tokenizer
 from generate import load_diffusion_model_and_tokenizer
@@ -26,9 +30,82 @@ load_dotenv()
 DATASET_MAP = {
     "gsm8k": GSM8KDataset,
     "math": MATH500Dataset,
+    "math_beyond": MATHBeyondDataset,
+    "aime24": AIME24Dataset,
+    "aime25": AIME25Dataset,
+    "aime": AIMECombinedDataset,
     "countdown": CTDDataset,
+    "countdown_cd4": CTD4Dataset,
+    "countdown_cd5": CTD5Dataset,
+    "countdown_legacy": CTDLegacyDataset,
     "sudoku": SudokuDataset,
+    "counting_letters": CountingLettersDataset,
 }
+
+
+def extract_and_score_answer(text, gt_answer, data="gsm8k"):
+    """Dataset-aware answer extraction.
+
+    Returns: extracted_answer (float, str, or None)
+    """
+    if data.startswith("countdown"):
+        # Official Dream cd_metric: gt_answer is the input string "n1,n2,...,target"
+        pred = text.split('\n')[0].strip()
+        if cd_score_single(gt_answer, pred):
+            target = gt_answer.split(',')[-1].strip()
+            return float(target)
+        return None
+
+    if data == "sudoku":
+        extracted = Parser.extract_answer_sudoku(text)
+        if extracted is None:
+            return None
+        extracted = re.sub(r"[^1-4]", "", extracted)
+        if len(extracted) >= 16:
+            return extracted[:16]
+        return None
+
+    if data in ("aime24", "aime25", "aime"):
+        extracted = Parser.extract_answer_boxed(text)
+        if extracted is None:
+            return None
+        try:
+            val = int(float(extracted))
+            if 0 <= val <= 999:
+                return float(val)
+        except (ValueError, TypeError):
+            pass
+        return None
+
+    # gsm8k, math, math_beyond, counting_letters: extract from \boxed{}
+    extracted = Parser.extract_answer_boxed(text)
+    try:
+        extracted = float(extracted)
+    except (ValueError, TypeError):
+        pass
+    return extracted
+
+
+def normalize_ground_truth(gt_answer, data="gsm8k"):
+    """Return a scalar ground truth suitable for comparison."""
+    if data.startswith("countdown"):
+        target = gt_answer.split(',')[-1].strip()
+        return float(target)
+    return gt_answer
+
+
+_EOS_MARKERS = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
+
+
+def _truncate_at_eos(text):
+    """Truncate text at the earliest EOS marker found."""
+    earliest = len(text)
+    for marker in _EOS_MARKERS:
+        pos = text.find(marker)
+        if 0 <= pos < earliest:
+            earliest = pos
+    return text[:earliest]
+
 
 def setup_device():
     """Setup single GPU."""
@@ -81,7 +158,8 @@ def evaluate_auto_regressive_model(
     """
     # Determine output filename BEFORE loading model
     model_name_clean = model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_ar.json"
+    data_tag = f"_{data}" if data != "gsm8k" else ""
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_ar.json"
     
     # Check for existing results and resume capability
     all_generations = []
@@ -189,26 +267,11 @@ def evaluate_auto_regressive_model(
             
             # Process each generation in the batch
             for j, text in enumerate(generated_texts):
-                # Truncate at EOS tokens
                 raw_generations[j].append(text)
-                eos_markers = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
-                for marker in eos_markers:
-                    if marker in text:
-                        text = text.split(marker)[0]
-                        break
+                text = _truncate_at_eos(text)
                 all_cleaned_texts[j].append(text)
                 
-                # Extract the boxed answer from the generation
-                try:
-                    extracted_answer = Parser.extract_answer_boxed(text)
-                    # Try to convert to float for numerical answers
-                    try:
-                        extracted_answer = float(extracted_answer)
-                    except (ValueError, TypeError):
-                        # Keep as string if not a number
-                        pass
-                except Exception as e:
-                    extracted_answer = None
+                extracted_answer = extract_and_score_answer(text, gt_answers[j], data)
                 all_extracted_answers[j].append(extracted_answer)
         
         # Create results with lists of generations (or single value if n_samples=1)
@@ -218,7 +281,7 @@ def evaluate_auto_regressive_model(
                 "prompt_input": prompts[j],
                 "generations": all_cleaned_texts[j] if n_samples > 1 else all_cleaned_texts[j][0],
                 "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
-                "ground_truth": gt_answers[j],
+                "ground_truth": normalize_ground_truth(gt_answers[j], data),
             }
             for j in range(batch_size_actual)
         ]
@@ -279,7 +342,6 @@ def evaluate_dllm(
     few_shot = 0,
     batch_size = 16,
     gen_length = 128,
-    diffusion_steps = 64,
     temperature = 0.2,
     cfg_scale = 0.0,
     steps = 64,
@@ -296,7 +358,8 @@ def evaluate_dllm(
 
     # Determine output filename BEFORE loading model
     model_name_clean = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{diffusion_steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_testing.json"
+    data_tag = f"_{data}" if data != "gsm8k" else ""
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{steps}_{block_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_dllm.json"
     
     # Check for existing results and resume capability
     all_generations = []
@@ -410,21 +473,10 @@ def evaluate_dllm(
             # Process each generation in the batch
             for j, text in enumerate(generated_texts):
                 raw_generations[j].append(text)
-                eos_markers = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
-                for marker in eos_markers:
-                    if marker in text:
-                        text = text.split(marker)[0]
-                        break
+                text = _truncate_at_eos(text)
                 all_cleaned_texts[j].append(text)
                 
-                try:
-                    extracted_answer = Parser.extract_answer_boxed(text)
-                    try:
-                        extracted_answer = float(extracted_answer)
-                    except (ValueError, TypeError):
-                        pass
-                except Exception as e:
-                    extracted_answer = None
+                extracted_answer = extract_and_score_answer(text, gt_answers[j], data)
                 all_extracted_answers[j].append(extracted_answer)
         
         # Create results
@@ -434,7 +486,7 @@ def evaluate_dllm(
                 "prompt_input": prompts[j],
                 "generations": all_cleaned_texts[j] if n_samples > 1 else all_cleaned_texts[j][0],
                 "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
-                "ground_truth": gt_answers[j],
+                "ground_truth": normalize_ground_truth(gt_answers[j], data),
             }
             for j in range(batch_size_actual)
         ]
@@ -517,6 +569,7 @@ def evaluate_fast_dllm(
     # Shared parameters
     dual_cache = True,  # Enable dual cache (both LLaDA and Dream)
     threshold = None,  # Confidence threshold for parallel decoding
+    cache_refresh_steps = 0,  # Dream: refresh prompt cache every N steps (0=disabled)
     n_samples = 1,
     output_dir = "results",
     device = "cuda",
@@ -524,8 +577,10 @@ def evaluate_fast_dllm(
 
     # Determine output filename BEFORE loading model
     model_name_clean = diffusion_model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{steps}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_fast_dllm.json"
-    
+    data_tag = f"_{data}" if data != "gsm8k" else ""
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{steps}_{block_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_fast_dllm.json"
+    os.makedirs(output_dir, exist_ok=True)
+
     # Check for existing results and resume capability
     all_generations = []
     processed_questions = set()
@@ -645,6 +700,7 @@ def evaluate_fast_dllm(
                 # Shared
                 dual_cache=dual_cache,
                 threshold=threshold,
+                cache_refresh_steps=cache_refresh_steps,
             )
 
             # Slice only the generated tokens (after the input)
@@ -653,26 +709,11 @@ def evaluate_fast_dllm(
             
             # Process each generation in the batch
             for j, text in enumerate(generated_texts):
-                # Truncate at EOS tokens
                 raw_generations[j].append(text)
-                eos_markers = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
-                for marker in eos_markers:
-                    if marker in text:
-                        text = text.split(marker)[0]
-                        break
+                text = _truncate_at_eos(text)
                 all_cleaned_texts[j].append(text)
                 
-                # Extract the boxed answer from the generation
-                try:
-                    extracted_answer = Parser.extract_answer_boxed(text)
-                    # Try to convert to float for numerical answers
-                    try:
-                        extracted_answer = float(extracted_answer)
-                    except (ValueError, TypeError):
-                        # Keep as string if not a number
-                        pass
-                except Exception as e:
-                    extracted_answer = None
+                extracted_answer = extract_and_score_answer(text, gt_answers[j], data)
                 all_extracted_answers[j].append(extracted_answer)
         
         # Create results with lists of generations (or single value if n_samples=1)
@@ -683,7 +724,7 @@ def evaluate_fast_dllm(
                 "generations": all_cleaned_texts[j] if n_samples > 1 else all_cleaned_texts[j][0],
                 "raw_generations": raw_generations[j] if n_samples > 1 else raw_generations[j][0],
                 "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
-                "ground_truth": gt_answers[j],
+                "ground_truth": normalize_ground_truth(gt_answers[j], data),
             }
             for j in range(batch_size_actual)
         ]
@@ -783,8 +824,8 @@ def evaluate_vllm_model(
     
     # Determine output filename BEFORE loading model
     model_name_clean = model_name.replace("/", "_")
-    filename = f"{output_dir}/{model_name_clean}_{gen_length}_{few_shot}_{n_samples}_{num_evals_to_use}_{temperature}_generations_vllm.json"
-    
+    data_tag = f"_{data}" if data != "gsm8k" else ""
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_vllm.json"
     # Check for existing results and resume capability
     all_generations = []
     processed_questions = set()
@@ -874,84 +915,59 @@ def evaluate_vllm_model(
         
         start_time = time.time()
         
-        # Get the prompt text (vLLM works with text, not token IDs)
         prompts = batch["prompts"]
         gt_answers = batch["answers"]
-        
-        # Since batch_size=1, we only have one question
-        prompt = prompts[0]
-        question = questions[0]
-        gt_answer = gt_answers[0]
-        
-        # Process outputs
-        all_cleaned_texts = []
-        raw_generations = []
-        all_extracted_answers = []
-        
-        # Generate samples SEQUENTIALLY (one at a time) like standard HuggingFace
-        for sample_idx in range(n_samples):
-            # Configure sampling parameters for SINGLE generation
-            sampling_params = SamplingParams(
-                n=1,  # Generate ONE sample at a time
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k if top_k > 0 else -1,
-                max_tokens=gen_length,
-                seed=None if temperature > 0 else 2,  # Fixed seed only for greedy
-            )
-            
-            # Generate with vLLM (single sample)
-            outputs = llm.generate([prompt], sampling_params, use_tqdm=False)
-            
-            # vLLM returns one RequestOutput per prompt
-            output = outputs[0]
-            completion_output = output.outputs[0]  # Only one output since n=1
-            
-            text = completion_output.text
-            raw_generations.append(text)
-            
-            # Truncate at EOS tokens
-            eos_markers = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
-            cleaned_text = text
-            for marker in eos_markers:
-                if marker in cleaned_text:
-                    cleaned_text = cleaned_text.split(marker)[0]
-                    break
-            all_cleaned_texts.append(cleaned_text)
-            
-            # Extract the boxed answer from the generation
-            try:
-                extracted_answer = Parser.extract_answer_boxed(cleaned_text)
-                # Try to convert to float for numerical answers
-                try:
-                    extracted_answer = float(extracted_answer)
-                except (ValueError, TypeError):
-                    # Keep as string if not a number
-                    pass
-            except Exception as e:
-                extracted_answer = None
-            all_extracted_answers.append(extracted_answer)
-        
-        # Create result (use list if n_samples > 1, single value otherwise)
-        result = {
-            "question": question,
-            "prompt_input": prompt,
-            "generations": all_cleaned_texts if n_samples > 1 else all_cleaned_texts[0],
-            "raw_generations": raw_generations if n_samples > 1 else raw_generations[0],
-            "extracted_answer": all_extracted_answers if n_samples > 1 else all_extracted_answers[0],
-            "ground_truth": gt_answer,
-        }
-        
-        all_generations.append(result)
-        processed_questions.add(question)
-        
-        total_processed += n_samples
+        batch_size_actual = len(questions)
+
+        # Per-question accumulators
+        all_cleaned_texts = [[] for _ in range(batch_size_actual)]
+        raw_generations = [[] for _ in range(batch_size_actual)]
+        all_extracted_answers = [[] for _ in range(batch_size_actual)]
+
+        # vLLM natively supports generating n samples per prompt in one call
+        sampling_params = SamplingParams(
+            n=n_samples,
+            temperature=temperature if temperature > 0 else 0.7,
+            top_p=top_p,
+            top_k=top_k if top_k > 0 else -1,
+            max_tokens=gen_length,
+            seed=None,
+        )
+
+        prompts_to_gen = [prompts[j] for j in batch_indices_to_process]
+        outputs = llm.generate(prompts_to_gen, sampling_params, use_tqdm=False)
+
+        for out_idx, j in enumerate(batch_indices_to_process):
+            for sample_output in outputs[out_idx].outputs:
+                text = sample_output.text
+                raw_generations[j].append(text)
+                cleaned_text = _truncate_at_eos(text)
+                all_cleaned_texts[j].append(cleaned_text)
+                extracted_answer = extract_and_score_answer(cleaned_text, gt_answers[j], data)
+                all_extracted_answers[j].append(extracted_answer)
+
+        example_results = [
+            {
+                "question": questions[j],
+                "prompt_input": prompts[j],
+                "generations": all_cleaned_texts[j] if n_samples > 1 else all_cleaned_texts[j][0],
+                "raw_generations": raw_generations[j] if n_samples > 1 else raw_generations[j][0],
+                "extracted_answer": all_extracted_answers[j] if n_samples > 1 else all_extracted_answers[j][0],
+                "ground_truth": normalize_ground_truth(gt_answers[j], data),
+            }
+            for j in range(batch_size_actual)
+        ]
+
+        for j, result in enumerate(example_results):
+            if j in batch_indices_to_process:
+                all_generations.append(result)
+                processed_questions.add(result["question"])
+
+        total_processed += len(batch_indices_to_process) * n_samples
         wall_times.append(time.time() - start_time)
         
-        # Update progress bar
-        pbar.update(1)
+        pbar.update(len(batch_indices_to_process))
         
-        # CRITICAL: Save after EVERY question to prevent data loss
         avg_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0
         with open(filename, "w") as f:
             json.dump(
@@ -995,12 +1011,12 @@ def main():
     args = parser.parse_args()
 
     diffusion_model_name = args.diffusion_model_name
-    data = "gsm8k"
-    num_evals_to_use = 256
-    few_shot = 5         
+    data = "counting_letters"
+    num_evals_to_use = 10
+    few_shot = 4         
     batch_size = 1
-    gen_length = 256
-    block_length = 32
+    gen_length = 128
+    block_length = 128
     steps = gen_length   
     use_cache = True
     dual_cache = True
