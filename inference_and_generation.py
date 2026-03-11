@@ -18,6 +18,7 @@ from dataset.sudoku import SudokuDataset
 from dataset.counting_letters import CountingLettersDataset
 from dataset.math_beyond import MATHBeyondDataset
 from dataset.aime import AIME24Dataset, AIME25Dataset, AIMECombinedDataset
+from dataset.trip_planning import TripPlanningDataset, trip_score_single
 from metrics.parsers import Parser, validate_equation, evaluate_equation
 
 from generate_fast import load_fast_diffusion_model_and_tokenizer
@@ -40,7 +41,27 @@ DATASET_MAP = {
     "countdown_legacy": CTDLegacyDataset,
     "sudoku": SudokuDataset,
     "counting_letters": CountingLettersDataset,
+    "trip_planning": TripPlanningDataset,
 }
+
+_FIRST_ANSWER_BOXED_RE = re.compile(r'<answer>\s*\\boxed\{([^}]*)\}')
+_FIRST_BOXED_RE = re.compile(r'\\boxed\{([^}]*)\}')
+
+
+def _extract_first_boxed_answer(text):
+    """Extract the FIRST \\boxed{} answer, preferring the first <answer> block.
+
+    Base models continue generating new Q&A pairs after answering, so
+    last_boxed_only_string() picks up answers from hallucinated follow-up
+    questions. This function grabs the first one instead.
+    """
+    m = _FIRST_ANSWER_BOXED_RE.search(text)
+    if m:
+        return m.group(1)
+    m = _FIRST_BOXED_RE.search(text)
+    if m:
+        return m.group(1)
+    return None
 
 
 def extract_and_score_answer(text, gt_answer, data="gsm8k"):
@@ -56,6 +77,13 @@ def extract_and_score_answer(text, gt_answer, data="gsm8k"):
             return float(target)
         return None
 
+    if data == "trip_planning":
+        # gt_answer is "cities||durations" e.g. "Helsinki**Barcelona**Florence||5**5**6"
+        cities_str, durations_str = gt_answer.split("||")
+        if trip_score_single(cities_str, durations_str, text):
+            return 1.0
+        return None
+
     if data == "sudoku":
         extracted = Parser.extract_answer_sudoku(text)
         if extracted is None:
@@ -66,7 +94,7 @@ def extract_and_score_answer(text, gt_answer, data="gsm8k"):
         return None
 
     if data in ("aime24", "aime25", "aime"):
-        extracted = Parser.extract_answer_boxed(text)
+        extracted = _extract_first_boxed_answer(text)
         if extracted is None:
             return None
         try:
@@ -77,7 +105,17 @@ def extract_and_score_answer(text, gt_answer, data="gsm8k"):
             pass
         return None
 
-    # gsm8k, math, math_beyond, counting_letters: extract from \boxed{}
+    if data == "math_beyond":
+        extracted = _extract_first_boxed_answer(text)
+        if extracted is None:
+            return None
+        try:
+            return float(extracted)
+        except (ValueError, TypeError):
+            pass
+        return extracted
+
+    # gsm8k, math, counting_letters: extract from \boxed{}
     extracted = Parser.extract_answer_boxed(text)
     try:
         extracted = float(extracted)
@@ -91,6 +129,8 @@ def normalize_ground_truth(gt_answer, data="gsm8k"):
     if data.startswith("countdown"):
         target = gt_answer.split(',')[-1].strip()
         return float(target)
+    if data == "trip_planning":
+        return 1.0
     return gt_answer
 
 

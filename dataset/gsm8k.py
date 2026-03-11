@@ -32,11 +32,13 @@ class GSM8KDataset(torch.utils.data.Dataset):
         self.load_test_dataset()
         self.create_few_shot_prompt()
 
-        # Use global numpy random state for reproducible sampling
-        # This ensures the same questions are selected each time with the same seed
-        # NOTE: few_shot must be identical across models for same question set
+        # Use a dedicated RNG with fixed seed for subsampling so the same
+        # questions are evaluated regardless of few_shot count (which
+        # consumes different amounts of the global random state for base
+        # vs instruct models).
+        _subsample_rng = np.random.RandomState(42)
         self.subsample = (
-            np.random.choice(len(self.dataset), subsample, replace=False)
+            _subsample_rng.choice(len(self.dataset), subsample, replace=False)
             if subsample != -1
             else np.arange(len(self.dataset))
         )

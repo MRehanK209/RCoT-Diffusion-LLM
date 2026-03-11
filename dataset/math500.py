@@ -1,6 +1,9 @@
+import re
+
 import numpy as np
 from dataset.gsm8k import GSM8KDataset
 from datasets import load_dataset
+from metrics.parsers import Parser
 
 
 MATH500_SYSTEM_PROMPT = """You are a math expert. You will be given a math problem to solve. Solve it step by step. Wrap the final answer in a \\boxed{}. 
@@ -11,6 +14,16 @@ Your reasoning here
 <answer>
 \\boxed{...}
 </answer>"""
+
+
+def _extract_boxed_for_fewshot(solution_text):
+    """Extract the content inside \\boxed{} from a MATH-style solution."""
+    return Parser.extract_answer_boxed(solution_text)
+
+
+def _strip_boxed_from_solution(solution_text):
+    """Remove the \\boxed{...} from solution text to get clean reasoning."""
+    return re.sub(r'\$?\\boxed\{[^}]+\}\$?\.?', '', solution_text).strip()
 
 
 class MATH500Dataset(GSM8KDataset):
@@ -32,17 +45,43 @@ class MATH500Dataset(GSM8KDataset):
         """Load few-shot examples from MATH dataset."""
         if self.num_examples <= 0:
             return []
-        train_data = load_dataset("EleutherAI/hendrycks_math", ("algebra"), split="train")
+        train_data = load_dataset("EleutherAI/hendrycks_math", "algebra", split="train")
         samples = np.random.choice(range(len(train_data)), self.num_examples, replace=False)
         few_shot_examples = []
         for example_idx in samples:
-            problem = train_data[example_idx]["problem"]
-            solution = train_data[example_idx]["solution"]
-            # Format to match GSM8K structure (question/answer)
+            item = train_data[int(example_idx)]
             few_shot_examples.append(
-                {"question": problem, "answer": solution}
+                {"question": item["problem"], "answer": item["solution"]}
             )
         return few_shot_examples
+
+    def create_few_shot_prompt(self):
+        """Build few-shot prompt from MATH-style solutions (\\boxed{} answers)."""
+        few_shot_examples = self.load_few_shot_examples()
+
+        if not few_shot_examples:
+            self.few_shot_prompt = ""
+            return
+
+        formatted_examples = []
+        for example in few_shot_examples:
+            input_text = example["question"]
+            full_solution = example["answer"]
+
+            gold = _extract_boxed_for_fewshot(full_solution)
+            reasoning = _strip_boxed_from_solution(full_solution)
+
+            formatted_answer = (
+                f"<reasoning>\n{reasoning}\n</reasoning>\n"
+                f"<answer>\n\\boxed{{{gold}}}\n</answer>"
+            )
+            formatted_examples.append(
+                f"Question: {input_text}\nAnswer:\n{formatted_answer}"
+            )
+
+        self.few_shot_prompt = "\n\n".join(formatted_examples)
+        if self.num_examples > 0:
+            print(f"Created {len(formatted_examples)} few-shot examples")
 
     def __getitem__(self, idx):
         question = self.dataset[self.subsample[idx].item()]["problem"]

@@ -92,9 +92,11 @@ class CTDDataset(torch.utils.data.Dataset):
         self._load_data()
         self._build_prompt_prefix()
 
+        # _subsample_rng = np.random.RandomState(42)
         n_test = len(self.test_data)
         if 0 < subsample < n_test:
             self.subsample = np.random.choice(n_test, subsample, replace=False)
+            # self.subsample = _subsample_rng.choice(n_test, subsample, replace=False)
         else:
             self.subsample = np.arange(n_test)
 
