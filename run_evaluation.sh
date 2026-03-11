@@ -1,0 +1,1057 @@
+#!/bin/bash
+#
+# Unified Evaluation Script for Diffusion vs AR LLM Comparison
+#
+# Replaces: run_experiments.sh, run_batch_comparison.sh,
+#           run_deterministic_comparison.sh, run_instruct_comparison.sh,
+#           run_passk_experiments.sh, run_hard_benchmarks.sh
+#
+# Usage: ./run_evaluation.sh --experiment <type> [options]
+#
+# Experiment types:
+#   accuracy     — Single-sample accuracy (temp=0, n=1)
+#   passk        — Pass@k with many samples (temp=0.7, n=128)
+#   batch        — Batch size comparison (bs=1 vs bs=8)
+#   speed        — Fast vs slow inference path comparison
+#   sweep        — Grid search over gen_length/steps/block_length
+#
+# See ./run_evaluation.sh --help for full option list.
+# See docs/EXPERIMENTS.md for detailed documentation.
+#
+
+set -uo pipefail
+
+source .venv/bin/activate
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_LAUNCH_BLOCKING=0
+
+# =============================================================================
+# DEFAULTS
+# =============================================================================
+EXPERIMENT=""
+DATASET="countdown_cd4"
+TARGET="all"           # all | llada | dream | qwen
+VARIANT="all"          # all | base | instruct
+METHOD="fast"          # fast | slow | both
+N_SAMPLES=""           # empty = auto per experiment
+BATCH_SIZE=""          # empty = auto per experiment
+TEMPERATURE=""         # empty = auto per experiment
+FEW_SHOT=""            # empty = auto per dataset/variant
+NUM_EVALS=""           # empty = auto per dataset
+GEN_LENGTH=""          # empty = auto per dataset
+STEPS=""               # empty = auto per dataset
+BLOCK_LENGTH=""        # empty = auto per dataset
+RESULTS_DIR="results"
+
+# =============================================================================
+# HELP
+# =============================================================================
+show_help() {
+    cat <<'HELP'
+Unified Evaluation Script — Diffusion vs AR LLM Comparison
+
+USAGE
+  ./run_evaluation.sh --experiment <type> [options]
+
+EXPERIMENT TYPES
+  accuracy   Single-sample accuracy evaluation (deterministic).
+             Defaults: temp=0, n_samples=1, batch_size=8, method=both
+             Compares fast vs slow inference paths for correctness.
+
+  passk      Pass@k evaluation with many samples per question.
+             Defaults: temp=0.7, n_samples=128, batch_size=8, method=fast
+             Studies how accuracy scales with repeated sampling (k=1..128).
+
+  batch      Batch size comparison (bs=1 vs bs=8).
+             Defaults: temp=0, n_samples=1, method=both
+             Measures throughput speedup and accuracy consistency.
+
+  speed      Fast vs slow inference speed comparison.
+             Defaults: temp=0, n_samples=1, batch_size=8, method=both
+             Times fast-dLLM/vLLM vs dLLM/AR-HF for wall-clock comparison.
+
+  sweep      Hyperparameter grid search (gen_length × steps × block_length).
+             Defaults: temp=0.7, n_samples=128, method=fast
+             Only for diffusion models (LLaDA/Dream).
+
+MODEL SELECTION
+  -m, --model        llada | dream | qwen | all         (default: all)
+  -v, --variant      base | instruct | all              (default: all)
+  --method           fast | slow | both                 (default: per-experiment)
+
+DATASET
+  -d, --dataset      countdown_cd4 | countdown | countdown_cd5 |
+                     gsm8k | math | math_beyond | aime | trip_planning |
+                     sudoku | counting_letters           (default: countdown_cd4)
+
+GENERATION PARAMETERS (override per-dataset defaults)
+  -n, --n_samples    Samples per question
+  -B, --batch_size   Batch size for inference
+  -t, --temp         Sampling temperature
+  -f, --few_shot     Few-shot examples (auto: 0 for instruct, 8 for countdown, 4 else)
+  -e, --num_evals    Number of test problems (auto per dataset)
+  -g, --gen_length   Max generation tokens
+  -s, --steps        Diffusion steps
+  -b, --block_length Block length for diffusion
+
+OUTPUT
+  -o, --output_dir   Results directory                   (default: results)
+
+PER-DATASET DEFAULTS
+  Dataset            gen_length  steps  block  few_shot  num_evals
+  ─────────────────  ──────────  ─────  ─────  ────────  ─────────
+  countdown_cd4           32      32     32       8        992
+  countdown/cd3/cd5       24      24     32       8        992
+  math (MATH500)        1024     512     32       4        200
+  aime                  1024     512     32       4         60
+  math_beyond           1024     512     32       4        181
+  trip_planning          256     256     32       2        200
+  sudoku                  24      24     32       8        256
+  gsm8k                  256     256     32       4        256
+
+EXAMPLES
+  # Accuracy: all models on countdown_cd4, fast vs slow
+  ./run_evaluation.sh --experiment accuracy
+
+  # Pass@k: base + instruct on countdown_cd4
+  ./run_evaluation.sh --experiment passk -d countdown_cd4
+
+  # Pass@k: only instruct models on MATH500
+  ./run_evaluation.sh --experiment passk -d math -v instruct
+
+  # Batch comparison: Dream only
+  ./run_evaluation.sh --experiment batch -m dream
+
+  # Speed comparison: LLaDA base only
+  ./run_evaluation.sh --experiment speed -m llada -v base
+
+  # Hyperparameter sweep: LLaDA on GSM8K
+  ./run_evaluation.sh --experiment sweep -m llada -d gsm8k
+
+  # Hard benchmarks: all models, all hard datasets
+  ./run_evaluation.sh --experiment passk -d aime
+  ./run_evaluation.sh --experiment passk -d math_beyond
+  ./run_evaluation.sh --experiment passk -d trip_planning
+HELP
+}
+
+# =============================================================================
+# PARSE ARGUMENTS
+# =============================================================================
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --experiment|-E)   EXPERIMENT="$2";    shift 2 ;;
+        -d|--dataset)      DATASET="$2";       shift 2 ;;
+        -m|--model)        TARGET="$2";        shift 2 ;;
+        -v|--variant)      VARIANT="$2";       shift 2 ;;
+        --method)          METHOD="$2";        shift 2 ;;
+        -n|--n_samples)    N_SAMPLES="$2";     shift 2 ;;
+        -B|--batch_size)   BATCH_SIZE="$2";    shift 2 ;;
+        -t|--temp)         TEMPERATURE="$2";   shift 2 ;;
+        -f|--few_shot)     FEW_SHOT="$2";      shift 2 ;;
+        -e|--num_evals)    NUM_EVALS="$2";     shift 2 ;;
+        -g|--gen_length)   GEN_LENGTH="$2";    shift 2 ;;
+        -s|--steps)        STEPS="$2";         shift 2 ;;
+        -b|--block_length) BLOCK_LENGTH="$2";  shift 2 ;;
+        -o|--output_dir)   RESULTS_DIR="$2";   shift 2 ;;
+        -h|--help)         show_help; exit 0 ;;
+        *) echo "Unknown argument: $1"; echo "Run with --help for usage."; exit 1 ;;
+    esac
+done
+
+if [[ -z "$EXPERIMENT" ]]; then
+    echo "ERROR: --experiment is required."
+    echo "Valid types: accuracy, passk, batch, speed, sweep"
+    echo "Run with --help for full usage."
+    exit 1
+fi
+
+# =============================================================================
+# APPLY EXPERIMENT-SPECIFIC DEFAULTS (only for unset values)
+# =============================================================================
+case $EXPERIMENT in
+    accuracy)
+        : "${N_SAMPLES:=1}"
+        : "${BATCH_SIZE:=8}"
+        : "${TEMPERATURE:=0}"
+        : "${METHOD:=both}"
+        ;;
+    passk)
+        : "${N_SAMPLES:=128}"
+        : "${BATCH_SIZE:=8}"
+        : "${TEMPERATURE:=0.7}"
+        : "${METHOD:=fast}"
+        ;;
+    batch)
+        : "${N_SAMPLES:=1}"
+        : "${BATCH_SIZE:=8}"
+        : "${TEMPERATURE:=0}"
+        : "${METHOD:=both}"
+        ;;
+    speed)
+        : "${N_SAMPLES:=1}"
+        : "${BATCH_SIZE:=8}"
+        : "${TEMPERATURE:=0}"
+        : "${METHOD:=both}"
+        ;;
+    sweep)
+        : "${N_SAMPLES:=128}"
+        : "${BATCH_SIZE:=1}"
+        : "${TEMPERATURE:=0.7}"
+        : "${METHOD:=fast}"
+        ;;
+    *)
+        echo "ERROR: Unknown experiment type '$EXPERIMENT'."
+        echo "Valid types: accuracy, passk, batch, speed, sweep"
+        exit 1
+        ;;
+esac
+
+mkdir -p "$RESULTS_DIR"
+
+LOG_FILE="${EXPERIMENT}_${DATASET}_$(date '+%Y%m%d_%H%M%S').log"
+
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+gpu_cleanup() {
+    python3 -c "import torch,gc; gc.collect(); torch.cuda.empty_cache()" 2>/dev/null
+    sleep 1
+}
+
+# =============================================================================
+# LOCK FILE
+# =============================================================================
+LOCK_FILE="/tmp/run_eval_${EXPERIMENT}_${DATASET}.lock"
+cleanup() {
+    rm -f "$LOCK_FILE"
+    pkill -P $$ 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+if [ -f "$LOCK_FILE" ]; then
+    OTHER_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$OTHER_PID" ] && kill -0 "$OTHER_PID" 2>/dev/null; then
+        echo "ERROR: Another instance is running (PID: $OTHER_PID). Remove $LOCK_FILE if stale."
+        exit 1
+    fi
+    rm -f "$LOCK_FILE"
+fi
+echo $$ > "$LOCK_FILE"
+
+# =============================================================================
+# MODEL DEFINITIONS
+# =============================================================================
+declare -A BASE_MODELS
+BASE_MODELS=(
+    ["llada"]="GSAI-ML/LLaDA-8B-Base"
+    ["dream"]="Dream-org/Dream-v0-Base-7B"
+    ["qwen"]="Qwen/Qwen2.5-7B"
+)
+
+declare -A INST_MODELS
+INST_MODELS=(
+    ["llada"]="GSAI-ML/LLaDA-8B-Instruct"
+    ["dream"]="Dream-org/Dream-v0-Instruct-7B"
+    ["qwen"]="Qwen/Qwen2.5-7B-Instruct"
+)
+
+is_diffusion_model() {
+    local family=$1
+    [[ "$family" == "llada" || "$family" == "dream" ]]
+}
+
+# =============================================================================
+# PER-DATASET GENERATION PARAMETERS
+#
+#  Dataset            gl    st    bl   fs   ne    Source / Rationale
+#  ─────────────────  ────  ────  ───  ──  ────  ───────────────────────────
+#  countdown_cd4       32    32   32    8   992   Dream official eval
+#  countdown/cd3/cd5   24    24   32    8   992   Dream official eval
+#  math (MATH500)    1024   512   32    4   200   99.8% solutions fit @1024
+#  aime              1024   512   32    4    60   all 60 problems
+#  math_beyond       1024   512   32    4   181   all 181 problems
+#  trip_planning      256   256   32    2   200   Dream official eval
+#  sudoku              24    24   32    8   256   Dream official eval
+#  gsm8k              256   256   32    4   256   standard
+# =============================================================================
+
+_get_gen_length() {
+    local dataset=$1
+    if [[ -n "$GEN_LENGTH" ]]; then echo "$GEN_LENGTH"; return; fi
+    case $dataset in
+        countdown_cd4)                echo 32 ;;
+        countdown*|sudoku)            echo 24 ;;
+        math|aime|math_beyond)        echo 1024 ;;
+        trip_planning)                echo 256 ;;
+        gsm8k|counting_letters)       echo 256 ;;
+        *)                            echo 256 ;;
+    esac
+}
+
+_get_steps() {
+    local dataset=$1
+    if [[ -n "$STEPS" ]]; then echo "$STEPS"; return; fi
+    case $dataset in
+        countdown_cd4)                echo 32 ;;
+        countdown*|sudoku)            echo 24 ;;
+        math|aime|math_beyond)        echo 512 ;;
+        trip_planning)                echo 256 ;;
+        gsm8k|counting_letters)       echo 256 ;;
+        *)                            echo 256 ;;
+    esac
+}
+
+_get_block_length() {
+    local dataset=$1
+    if [[ -n "$BLOCK_LENGTH" ]]; then echo "$BLOCK_LENGTH"; return; fi
+    echo 32
+}
+
+_get_num_evals() {
+    local dataset=$1
+    if [[ -n "$NUM_EVALS" ]]; then echo "$NUM_EVALS"; return; fi
+    case $dataset in
+        countdown*)       echo 992 ;;
+        math)             echo 200 ;;
+        aime)             echo 60 ;;
+        math_beyond)      echo 181 ;;
+        trip_planning)    echo 200 ;;
+        sudoku)           echo 256 ;;
+        gsm8k)            echo 256 ;;
+        counting_letters) echo 256 ;;
+        *)                echo 256 ;;
+    esac
+}
+
+_get_default_few_shot() {
+    local dataset=$1
+    case $dataset in
+        countdown*|sudoku) echo 8 ;;
+        trip_planning)     echo 2 ;;
+        *)                 echo 4 ;;
+    esac
+}
+
+_get_few_shot() {
+    local dataset=$1
+    local model_name=$2
+    if [[ -n "$FEW_SHOT" ]]; then echo "$FEW_SHOT"; return; fi
+
+    # Instruct models: 0-shot
+    if echo "$model_name" | grep -qi "instruct"; then
+        echo 0
+        return
+    fi
+
+    _get_default_few_shot "$dataset"
+}
+
+_get_k_values() {
+    local n=$1
+    if [ "$n" -eq 1 ]; then
+        echo "[1]"
+    elif [ "$n" -le 16 ]; then
+        echo "[1, 2, 4, 8, 16]"
+    elif [ "$n" -le 32 ]; then
+        echo "[1, 2, 4, 8, 16, 32]"
+    elif [ "$n" -le 64 ]; then
+        echo "[1, 2, 4, 8, 16, 32, 64]"
+    else
+        echo "[1, 2, 4, 8, 16, 32, 64, 128]"
+    fi
+}
+
+# =============================================================================
+# FILENAME HELPERS
+# =============================================================================
+_data_tag() {
+    local dataset=$1
+    if [[ "$dataset" == "gsm8k" ]]; then echo ""; else echo "_${dataset}"; fi
+}
+
+fast_dllm_fn() {
+    local model=$1 dataset=$2 fs=$3 bs=${4:-$BATCH_SIZE}
+    local m=$(echo "$model" | tr '/' '_')
+    local dt=$(_data_tag "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local st=$(_get_steps "$dataset")
+    local bl=$(_get_block_length "$dataset")
+    local ne=$(_get_num_evals "$dataset")
+    echo "${RESULTS_DIR}/${m}${dt}_${gl}_${st}_${bl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations_fast_dllm.json"
+}
+
+dllm_fn() {
+    local model=$1 dataset=$2 fs=$3 bs=${4:-$BATCH_SIZE}
+    local m=$(echo "$model" | tr '/' '_')
+    local dt=$(_data_tag "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local st=$(_get_steps "$dataset")
+    local bl=$(_get_block_length "$dataset")
+    local ne=$(_get_num_evals "$dataset")
+    echo "${RESULTS_DIR}/${m}${dt}_${gl}_${st}_${bl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations_dllm.json"
+}
+
+vllm_fn() {
+    local model=$1 dataset=$2 fs=$3 bs=${4:-$BATCH_SIZE}
+    local m=$(echo "$model" | tr '/' '_')
+    local dt=$(_data_tag "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local ne=$(_get_num_evals "$dataset")
+    echo "${RESULTS_DIR}/${m}${dt}_${gl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations_vllm.json"
+}
+
+ar_fn() {
+    local model=$1 dataset=$2 fs=$3 bs=${4:-$BATCH_SIZE}
+    local m=$(echo "$model" | tr '/' '_')
+    local dt=$(_data_tag "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local ne=$(_get_num_evals "$dataset")
+    echo "${RESULTS_DIR}/${m}${dt}_${gl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations_ar.json"
+}
+
+# =============================================================================
+# COMPLETION CHECK
+# =============================================================================
+check_complete() {
+    local output_file=$1
+    local expected_evals=$2
+    if [ -f "$output_file" ]; then
+        local completed
+        completed=$(python3 -c "
+import json
+try:
+    with open('$output_file') as f:
+        d = json.load(f)
+    gens = d.get('generations', [])
+    if gens:
+        ea = gens[0].get('extracted_answer')
+        expected_n = ${N_SAMPLES}
+        if isinstance(ea, list) and len(ea) >= expected_n:
+            print(len(gens))
+        elif not isinstance(ea, list) and expected_n == 1:
+            print(len(gens))
+        else:
+            print(0)
+    else:
+        print(0)
+except:
+    print(0)
+" 2>/dev/null)
+        if [ "$completed" -ge "$expected_evals" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# =============================================================================
+# RUNNERS
+# =============================================================================
+
+run_fast_dllm() {
+    local model_name=$1 dataset=$2
+    local fs=$(_get_few_shot "$dataset" "$model_name")
+    local ne=$(_get_num_evals "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local st=$(_get_steps "$dataset")
+    local bl=$(_get_block_length "$dataset")
+    local bs=${3:-$BATCH_SIZE}
+    local output_file
+    output_file=$(fast_dllm_fn "$model_name" "$dataset" "$fs" "$bs")
+
+    if check_complete "$output_file" "$ne"; then
+        log "SKIP  [fast-dLLM] $model_name on $dataset (bs=$bs) — already complete"
+        return 0
+    fi
+
+    local alg="entropy"
+    local dual_cache="False"
+    local cache_refresh_steps=0
+
+    if echo "$model_name" | grep -qi "dream"; then
+        alg="confidence_threshold"
+        dual_cache="True"
+        cache_refresh_steps=4
+    elif echo "$model_name" | grep -qi "llada"; then
+        alg="entropy"
+        dual_cache="True"
+        cache_refresh_steps=0
+    fi
+
+    log "START [fast-dLLM] $model_name on $dataset (n=$N_SAMPLES, temp=$TEMPERATURE, bs=$bs, fs=$fs, gl=$gl, st=$st, bl=$bl, evals=$ne)"
+    gpu_cleanup
+
+    python3 -u -c "
+import sys; sys.path.insert(0, '.')
+from inference_and_generation import evaluate_fast_dllm
+from evaluate_pass_k import compute_metrics
+
+filename = evaluate_fast_dllm(
+    diffusion_model_name='${model_name}',
+    data='${dataset}',
+    num_evals_to_use=${ne},
+    few_shot=${fs},
+    batch_size=${bs},
+    gen_length=${gl},
+    temperature=${TEMPERATURE},
+    steps=${st},
+    block_length=${bl},
+    remasking='low_confidence',
+    use_cache=True,
+    factor=None,
+    alg='${alg}',
+    alg_temp=0.0,
+    top_p=1.0,
+    top_k=None,
+    dual_cache=${dual_cache},
+    threshold=0.9,
+    cache_refresh_steps=${cache_refresh_steps},
+    n_samples=${N_SAMPLES},
+    output_dir='${RESULTS_DIR}',
+)
+
+compute_metrics(results_file=filename, samples_per_problem=${N_SAMPLES}, k_values=$(_get_k_values "$N_SAMPLES"))
+" 2>&1 | tee -a "$LOG_FILE"
+
+    local rc=${PIPESTATUS[0]}
+    [ $rc -eq 0 ] && log "DONE  [fast-dLLM] $model_name on $dataset" \
+                   || log "FAIL  [fast-dLLM] $model_name on $dataset (exit $rc)"
+    gpu_cleanup
+    return $rc
+}
+
+run_dllm() {
+    local model_name=$1 dataset=$2
+    local fs=$(_get_few_shot "$dataset" "$model_name")
+    local ne=$(_get_num_evals "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local st=$(_get_steps "$dataset")
+    local bl=$(_get_block_length "$dataset")
+    local bs=${3:-$BATCH_SIZE}
+    local output_file
+    output_file=$(dllm_fn "$model_name" "$dataset" "$fs" "$bs")
+
+    if check_complete "$output_file" "$ne"; then
+        log "SKIP  [dLLM] $model_name on $dataset (bs=$bs) — already complete"
+        return 0
+    fi
+
+    log "START [dLLM] $model_name on $dataset (n=$N_SAMPLES, temp=$TEMPERATURE, bs=$bs, fs=$fs, gl=$gl, st=$st, bl=$bl, evals=$ne)"
+    gpu_cleanup
+
+    python3 -u -c "
+import sys; sys.path.insert(0, '.')
+from inference_and_generation import evaluate_dllm
+from evaluate_pass_k import compute_metrics
+
+filename = evaluate_dllm(
+    diffusion_model_name='${model_name}',
+    data='${dataset}',
+    num_evals_to_use=${ne},
+    few_shot=${fs},
+    batch_size=${bs},
+    gen_length=${gl},
+    steps=${st},
+    temperature=${TEMPERATURE},
+    block_length=${bl},
+    cfg_scale=0.0,
+    remasking='low_confidence',
+    alg='entropy',
+    alg_temp=0.0,
+    top_p=1.0,
+    top_k=None,
+    n_samples=${N_SAMPLES},
+    output_dir='${RESULTS_DIR}',
+)
+
+compute_metrics(results_file=filename, samples_per_problem=${N_SAMPLES}, k_values=$(_get_k_values "$N_SAMPLES"))
+" 2>&1 | tee -a "$LOG_FILE"
+
+    local rc=${PIPESTATUS[0]}
+    [ $rc -eq 0 ] && log "DONE  [dLLM] $model_name on $dataset" \
+                   || log "FAIL  [dLLM] $model_name on $dataset (exit $rc)"
+    gpu_cleanup
+    return $rc
+}
+
+run_vllm() {
+    local model_name=$1 dataset=$2
+    local fs=$(_get_few_shot "$dataset" "$model_name")
+    local ne=$(_get_num_evals "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local bs=${3:-$BATCH_SIZE}
+    local output_file
+    output_file=$(vllm_fn "$model_name" "$dataset" "$fs" "$bs")
+
+    if check_complete "$output_file" "$ne"; then
+        log "SKIP  [vLLM] $model_name on $dataset (bs=$bs) — already complete"
+        return 0
+    fi
+
+    log "START [vLLM] $model_name on $dataset (n=$N_SAMPLES, temp=$TEMPERATURE, bs=$bs, fs=$fs, gl=$gl, evals=$ne)"
+    gpu_cleanup
+
+    python3 -u -c "
+import sys; sys.path.insert(0, '.')
+from inference_and_generation import evaluate_vllm_model
+from evaluate_pass_k import compute_metrics
+
+filename = evaluate_vllm_model(
+    model_name='${model_name}',
+    data='${dataset}',
+    num_evals_to_use=${ne},
+    few_shot=${fs},
+    batch_size=${bs},
+    gen_length=${gl},
+    temperature=${TEMPERATURE},
+    n_samples=${N_SAMPLES},
+    output_dir='${RESULTS_DIR}',
+)
+
+compute_metrics(results_file=filename, samples_per_problem=${N_SAMPLES}, k_values=$(_get_k_values "$N_SAMPLES"))
+" 2>&1 | tee -a "$LOG_FILE"
+
+    local rc=${PIPESTATUS[0]}
+    [ $rc -eq 0 ] && log "DONE  [vLLM] $model_name on $dataset" \
+                   || log "FAIL  [vLLM] $model_name on $dataset (exit $rc)"
+    gpu_cleanup
+    return $rc
+}
+
+run_ar() {
+    local model_name=$1 dataset=$2
+    local fs=$(_get_few_shot "$dataset" "$model_name")
+    local ne=$(_get_num_evals "$dataset")
+    local gl=$(_get_gen_length "$dataset")
+    local bs=${3:-$BATCH_SIZE}
+    local output_file
+    output_file=$(ar_fn "$model_name" "$dataset" "$fs" "$bs")
+
+    if check_complete "$output_file" "$ne"; then
+        log "SKIP  [AR] $model_name on $dataset (bs=$bs) — already complete"
+        return 0
+    fi
+
+    log "START [AR-HF] $model_name on $dataset (n=$N_SAMPLES, temp=$TEMPERATURE, bs=$bs, fs=$fs, gl=$gl, evals=$ne)"
+    gpu_cleanup
+
+    python3 -u -c "
+import sys; sys.path.insert(0, '.')
+from inference_and_generation import evaluate_auto_regressive_model
+from evaluate_pass_k import compute_metrics
+
+filename = evaluate_auto_regressive_model(
+    model_name='${model_name}',
+    data='${dataset}',
+    num_evals_to_use=${ne},
+    few_shot=${fs},
+    batch_size=${bs},
+    gen_length=${gl},
+    temperature=${TEMPERATURE},
+    top_p=1.0,
+    n_samples=${N_SAMPLES},
+    output_dir='${RESULTS_DIR}',
+)
+
+compute_metrics(results_file=filename, samples_per_problem=${N_SAMPLES}, k_values=$(_get_k_values "$N_SAMPLES"))
+" 2>&1 | tee -a "$LOG_FILE"
+
+    local rc=${PIPESTATUS[0]}
+    [ $rc -eq 0 ] && log "DONE  [AR-HF] $model_name on $dataset" \
+                   || log "FAIL  [AR-HF] $model_name on $dataset (exit $rc)"
+    gpu_cleanup
+    return $rc
+}
+
+# =============================================================================
+# DISPATCH: run a single model on a single dataset with the chosen method(s)
+# =============================================================================
+run_one() {
+    local family=$1 model_name=$2 dataset=$3 bs=${4:-$BATCH_SIZE}
+
+    if is_diffusion_model "$family"; then
+        if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
+            run_fast_dllm "$model_name" "$dataset" "$bs" || ((FAILED++))
+        fi
+        if [[ "$METHOD" == "slow" || "$METHOD" == "both" ]]; then
+            run_dllm "$model_name" "$dataset" "$bs" || ((FAILED++))
+        fi
+    else
+        if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
+            run_vllm "$model_name" "$dataset" "$bs" || ((FAILED++))
+        fi
+        if [[ "$METHOD" == "slow" || "$METHOD" == "both" ]]; then
+            run_ar "$model_name" "$dataset" "$bs" || ((FAILED++))
+        fi
+    fi
+}
+
+# =============================================================================
+# RESOLVE FAMILIES AND VARIANTS
+# =============================================================================
+FAMILIES=()
+case $TARGET in
+    all)   FAMILIES=(llada dream qwen) ;;
+    llada) FAMILIES=(llada) ;;
+    dream) FAMILIES=(dream) ;;
+    qwen)  FAMILIES=(qwen) ;;
+    *)     echo "ERROR: Unknown model '$TARGET' (use llada, dream, qwen, or all)"; exit 1 ;;
+esac
+
+get_models_for_variant() {
+    local family=$1
+    # Prints "base_model instruct_model" or just one depending on VARIANT
+    case $VARIANT in
+        base)     echo "${BASE_MODELS[$family]}" ;;
+        instruct) echo "${INST_MODELS[$family]}" ;;
+        all)      echo "${BASE_MODELS[$family]} ${INST_MODELS[$family]}" ;;
+    esac
+}
+
+# =============================================================================
+# EXPERIMENT: accuracy / passk / speed
+# =============================================================================
+run_standard_experiment() {
+    for family in "${FAMILIES[@]}"; do
+        for model_name in $(get_models_for_variant "$family"); do
+            run_one "$family" "$model_name" "$DATASET"
+            ((RUN++))
+            log "  Progress: $RUN runs completed"
+        done
+    done
+}
+
+# =============================================================================
+# EXPERIMENT: batch (runs bs=1 then bs=8)
+# =============================================================================
+run_batch_experiment() {
+    for bs in 1 8; do
+        log ""
+        log "############################################################"
+        log "# BATCH SIZE = $bs"
+        log "############################################################"
+        for family in "${FAMILIES[@]}"; do
+            for model_name in $(get_models_for_variant "$family"); do
+                run_one "$family" "$model_name" "$DATASET" "$bs"
+                ((RUN++))
+                log "  Progress: $RUN runs completed"
+            done
+        done
+    done
+}
+
+# =============================================================================
+# EXPERIMENT: sweep (gen_length × steps × block_length grid)
+# =============================================================================
+run_sweep_experiment() {
+    if [[ "$TARGET" == "qwen" ]]; then
+        echo "ERROR: sweep experiment is only for diffusion models (llada, dream)"
+        exit 1
+    fi
+
+    local sweep_families=()
+    for f in "${FAMILIES[@]}"; do
+        if is_diffusion_model "$f"; then
+            sweep_families+=("$f")
+        fi
+    done
+
+    if [ ${#sweep_families[@]} -eq 0 ]; then
+        echo "ERROR: No diffusion models selected for sweep."
+        exit 1
+    fi
+
+    # Build experiment grid
+    local EXPERIMENTS=()
+    for gl in 128 256; do
+        if [ "$gl" -eq 128 ]; then
+            local steps_list=(32 64 128)
+            local block_list=(32 64 128)
+        else
+            local steps_list=(32 64 128 256)
+            local block_list=(32 64 128 256)
+        fi
+        for st in "${steps_list[@]}"; do
+            for bl in "${block_list[@]}"; do
+                EXPERIMENTS+=("${gl}:${st}:${bl}")
+            done
+        done
+    done
+
+    local total_exps=${#EXPERIMENTS[@]}
+    log "Sweep: ${#sweep_families[@]} families × $total_exps configs = $((${#sweep_families[@]} * total_exps)) runs"
+
+    local ne=$(_get_num_evals "$DATASET")
+
+    for family in "${sweep_families[@]}"; do
+        local model_name="${BASE_MODELS[$family]}"
+        log ""
+        log "=== SWEEP: $model_name ==="
+
+        local exp_num=0
+        for exp in "${EXPERIMENTS[@]}"; do
+            ((exp_num++))
+            IFS=':' read -r gl st bl <<< "$exp"
+
+            local m_clean=$(echo "$model_name" | tr '/' '_')
+            local dt=$(_data_tag "$DATASET")
+            local fs=$(_get_few_shot "$DATASET" "$model_name")
+            local output_file="${RESULTS_DIR}/${m_clean}${dt}_${gl}_${st}_${bl}_${BATCH_SIZE}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations_fast_dllm.json"
+
+            if check_complete "$output_file" "$ne"; then
+                log "[$exp_num/$total_exps] SKIP: gl=$gl st=$st bl=$bl — complete"
+                continue
+            fi
+
+            log "[$exp_num/$total_exps] START: gl=$gl st=$st bl=$bl"
+            gpu_cleanup
+
+            local alg="entropy"
+            local dual_cache="True"
+            local cache_refresh_steps=0
+            if echo "$model_name" | grep -qi "dream"; then
+                alg="confidence_threshold"
+                cache_refresh_steps=4
+            fi
+
+            python3 -u -c "
+import sys; sys.path.insert(0, '.')
+from inference_and_generation import evaluate_fast_dllm
+from evaluate_pass_k import compute_metrics
+
+filename = evaluate_fast_dllm(
+    diffusion_model_name='${model_name}',
+    data='${DATASET}',
+    num_evals_to_use=${ne},
+    few_shot=${fs},
+    batch_size=${BATCH_SIZE},
+    gen_length=${gl},
+    temperature=${TEMPERATURE},
+    steps=${st},
+    block_length=${bl},
+    remasking='low_confidence',
+    use_cache=True,
+    factor=None,
+    alg='${alg}',
+    alg_temp=0.0,
+    top_p=1.0,
+    top_k=None,
+    dual_cache=${dual_cache},
+    threshold=0.9,
+    cache_refresh_steps=${cache_refresh_steps},
+    n_samples=${N_SAMPLES},
+    output_dir='${RESULTS_DIR}',
+)
+compute_metrics(results_file=filename, samples_per_problem=${N_SAMPLES}, k_values=$(_get_k_values "$N_SAMPLES"))
+" 2>&1 | tee -a "$LOG_FILE"
+
+            local rc=${PIPESTATUS[0]}
+            [ $rc -eq 0 ] && log "[$exp_num/$total_exps] DONE: gl=$gl st=$st bl=$bl" \
+                           || { log "[$exp_num/$total_exps] FAIL: gl=$gl st=$st bl=$bl (exit $rc)"; ((FAILED++)); }
+            gpu_cleanup
+        done
+    done
+}
+
+# =============================================================================
+# COMPARISON TABLE
+# =============================================================================
+generate_comparison_table() {
+    log ""
+    log "Generating comparison table..."
+
+    python3 -u -c "
+import sys, json, os
+sys.path.insert(0, '.')
+from metrics.pass_k import pass_at_k, compute_pass_at_k
+from evaluate_pass_k import prepare_pass_k_data, load_generation_results
+
+n_samples = ${N_SAMPLES}
+k_values = [k for k in [1, 2, 4, 8, 16, 32, 64, 128] if k <= n_samples]
+dataset = '${DATASET}'
+experiment = '${EXPERIMENT}'
+
+# Collect all result files matching this experiment
+models = {}
+families = '${FAMILIES[*]}'.split()
+variant = '${VARIANT}'
+
+base_map = {'llada': 'GSAI-ML/LLaDA-8B-Base', 'dream': 'Dream-org/Dream-v0-Base-7B', 'qwen': 'Qwen/Qwen2.5-7B'}
+inst_map = {'llada': 'GSAI-ML/LLaDA-8B-Instruct', 'dream': 'Dream-org/Dream-v0-Instruct-7B', 'qwen': 'Qwen/Qwen2.5-7B-Instruct'}
+diffusion = {'llada', 'dream'}
+
+method = '${METHOD}'
+methods_to_check = []
+if method in ('fast', 'both'): methods_to_check.append('fast')
+if method in ('slow', 'both'): methods_to_check.append('slow')
+
+for fam in families:
+    names = []
+    if variant in ('base', 'all'):    names.append(('Base', base_map[fam]))
+    if variant in ('instruct', 'all'): names.append(('Inst', inst_map[fam]))
+
+    for var_label, model_name in names:
+        m_clean = model_name.replace('/', '_')
+        dt = '' if dataset == 'gsm8k' else f'_{dataset}'
+
+        for meth in methods_to_check:
+            # Determine expected filenames
+            batch_sizes = [1, 8] if experiment == 'batch' else [${BATCH_SIZE}]
+
+            for bs in batch_sizes:
+                if fam in diffusion:
+                    if meth == 'fast':
+                        # Compute fs for this model
+                        is_inst = 'instruct' in model_name.lower()
+                        if '${FEW_SHOT}':
+                            try: fs = int('${FEW_SHOT}')
+                            except: fs = None
+                        else:
+                            fs = None
+                        if fs is None:
+                            if is_inst: fs = 0
+                            elif 'countdown' in dataset or 'sudoku' in dataset: fs = 8
+                            elif dataset == 'trip_planning': fs = 2
+                            else: fs = 4
+                        # Get gen params
+                        gl_map = {'countdown_cd4': 32, 'countdown': 24, 'countdown_cd3': 24, 'countdown_cd5': 24,
+                                  'math': 1024, 'aime': 1024, 'math_beyond': 1024, 'trip_planning': 256,
+                                  'sudoku': 24, 'gsm8k': 256}
+                        st_map = {'countdown_cd4': 32, 'countdown': 24, 'countdown_cd3': 24, 'countdown_cd5': 24,
+                                  'math': 512, 'aime': 512, 'math_beyond': 512, 'trip_planning': 256,
+                                  'sudoku': 24, 'gsm8k': 256}
+                        ne_map = {'countdown_cd4': 992, 'countdown': 992, 'countdown_cd3': 992, 'countdown_cd5': 992,
+                                  'math': 200, 'aime': 60, 'math_beyond': 181, 'trip_planning': 200,
+                                  'sudoku': 256, 'gsm8k': 256}
+                        gl = gl_map.get(dataset, 256)
+                        st = st_map.get(dataset, 256)
+                        ne = ne_map.get(dataset, 256)
+                        bl = 32
+                        filepath = f'${RESULTS_DIR}/{m_clean}{dt}_{gl}_{st}_{bl}_{bs}_{${TEMPERATURE}}_{fs}_{ne}_{n_samples}_generations_fast_dllm.json'
+                        method_label = 'fast-dLLM'
+                    else:
+                        # slow dllm - same structure but _dllm suffix
+                        continue  # simplified: skip slow path in table for now
+                else:
+                    if meth == 'fast':
+                        is_inst = 'instruct' in model_name.lower()
+                        if '${FEW_SHOT}':
+                            try: fs = int('${FEW_SHOT}')
+                            except: fs = None
+                        else:
+                            fs = None
+                        if fs is None:
+                            if is_inst: fs = 0
+                            elif 'countdown' in dataset or 'sudoku' in dataset: fs = 8
+                            elif dataset == 'trip_planning': fs = 2
+                            else: fs = 4
+                        gl_map = {'countdown_cd4': 32, 'countdown': 24, 'countdown_cd3': 24, 'countdown_cd5': 24,
+                                  'math': 1024, 'aime': 1024, 'math_beyond': 1024, 'trip_planning': 256,
+                                  'sudoku': 24, 'gsm8k': 256}
+                        ne_map = {'countdown_cd4': 992, 'countdown': 992, 'countdown_cd3': 992, 'countdown_cd5': 992,
+                                  'math': 200, 'aime': 60, 'math_beyond': 181, 'trip_planning': 200,
+                                  'sudoku': 256, 'gsm8k': 256}
+                        gl = gl_map.get(dataset, 256)
+                        ne = ne_map.get(dataset, 256)
+                        filepath = f'${RESULTS_DIR}/{m_clean}{dt}_{gl}_{bs}_{${TEMPERATURE}}_{fs}_{ne}_{n_samples}_generations_vllm.json'
+                        method_label = 'vLLM'
+                    else:
+                        continue
+
+                bs_label = f' (bs={bs})' if experiment == 'batch' else ''
+                label = f'{model_name.split(\"/\")[-1]}{bs_label}'
+                models[label] = filepath
+
+print()
+header = f\"{'Model':<35}\" + ''.join(f'pass@{k:>3}  ' for k in k_values)
+print(header)
+print('=' * len(header))
+
+all_results = {}
+for label, filepath in models.items():
+    if not os.path.exists(filepath):
+        print(f'{label:<35} (file not found)')
+        continue
+    try:
+        gens = load_generation_results(filepath)
+        pass_k_data = prepare_pass_k_data(gens)
+        scores = compute_pass_at_k(pass_k_data, k_values)
+        row = f'{label:<35}'
+        model_scores = {}
+        for k in k_values:
+            if k in scores:
+                row += f'{scores[k]*100:>6.2f}%  '
+                model_scores[k] = round(scores[k], 6)
+            else:
+                row += f'{\"N/A\":>7}  '
+        print(row)
+        all_results[label] = model_scores
+    except Exception as e:
+        print(f'{label:<35} ERROR: {e}')
+print()
+
+output = {
+    'experiment': experiment,
+    'dataset': dataset,
+    'n_samples': n_samples,
+    'temperature': ${TEMPERATURE},
+    'k_values': k_values,
+    'results': all_results,
+}
+outfile = f'${RESULTS_DIR}/{experiment}_{dataset}_comparison.json'
+with open(outfile, 'w') as f:
+    json.dump(output, f, indent=2)
+print(f'Saved to: {outfile}')
+" 2>&1 | tee -a "$LOG_FILE"
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+FAILED=0
+RUN=0
+
+log "================================================================"
+log "EVALUATION — experiment=$EXPERIMENT"
+log "================================================================"
+log "  Dataset:      $DATASET"
+log "  Models:       ${FAMILIES[*]}"
+log "  Variant:      $VARIANT"
+log "  Method:       $METHOD"
+log "  N_Samples:    $N_SAMPLES"
+log "  Batch Size:   $BATCH_SIZE"
+log "  Temperature:  $TEMPERATURE"
+log "  Few-shot:     ${FEW_SHOT:-auto}"
+log "  Gen params:"
+log "    gen_length:   $(_get_gen_length "$DATASET")"
+log "    steps:        $(_get_steps "$DATASET")"
+log "    block_length: $(_get_block_length "$DATASET")"
+log "    num_evals:    $(_get_num_evals "$DATASET")"
+log "  Log file:     $LOG_FILE"
+log "================================================================"
+
+case $EXPERIMENT in
+    accuracy|passk|speed)
+        run_standard_experiment
+        ;;
+    batch)
+        run_batch_experiment
+        ;;
+    sweep)
+        run_sweep_experiment
+        ;;
+esac
+
+generate_comparison_table
+
+log ""
+log "================================================================"
+log "COMPLETE — experiment=$EXPERIMENT, dataset=$DATASET, failed=$FAILED"
+log "================================================================"
+
+[ $FAILED -eq 0 ] && exit 0 || exit 1
