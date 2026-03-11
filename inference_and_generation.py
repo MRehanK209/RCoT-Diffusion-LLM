@@ -907,6 +907,10 @@ def evaluate_vllm_model(
     
     # Get tokenizer from vLLM
     tokenizer = llm.get_tokenizer()
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     
     # Determine if model is base or instruct
     is_base_model = 'base' in model_name.lower() or 'instruct' not in model_name.lower()

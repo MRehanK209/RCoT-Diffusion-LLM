@@ -175,7 +175,7 @@ diffusion generation parameters. Only applicable to diffusion models (LLaDA, Dre
 |------|-------|--------|---------|-------------|
 | `--experiment` | `-E` | accuracy, passk, batch, speed, sweep | *required* | Experiment type |
 | `--dataset` | `-d` | see below | countdown_cd4 | Dataset to evaluate on |
-| `--model` | `-m` | llada, dream, qwen, all | all | Model family |
+| `--model` | `-m` | llada, dream, qwen, llama, all | all | Model family |
 | `--variant` | `-v` | base, instruct, all | all | Model variant |
 | `--method` | | fast, slow, both | per-experiment | Inference method |
 | `--n_samples` | `-n` | integer | per-experiment | Samples per question |
@@ -219,6 +219,7 @@ diffusion generation parameters. Only applicable to diffusion models (LLaDA, Dre
 | LLaDA | `GSAI-ML/LLaDA-8B-Base` | `GSAI-ML/LLaDA-8B-Instruct` | Diffusion | fast-dLLM / dLLM |
 | Dream | `Dream-org/Dream-v0-Base-7B` | `Dream-org/Dream-v0-Instruct-7B` | Diffusion | fast-dLLM / dLLM |
 | Qwen | `Qwen/Qwen2.5-7B` | `Qwen/Qwen2.5-7B-Instruct` | Autoregressive | vLLM / AR-HF |
+| LLaMA | `meta-llama/Llama-3.1-8B` | `meta-llama/Llama-3.1-8B-Instruct` | Autoregressive | vLLM / AR-HF |
 
 **Model-specific fast-dLLM parameters:**
 - **Dream**: `alg=confidence_threshold`, `dual_cache=True`, `cache_refresh_steps=4`
@@ -323,6 +324,8 @@ what's missing.
 | `run_deterministic_comparison.sh -v base -m fast llada` | `./run_evaluation.sh -E accuracy -v base --method fast -m llada` |
 | `run_instruct_comparison.sh -v base all` | `./run_evaluation.sh -E passk -v base -n 16 -B 1` |
 | `run_instruct_comparison.sh -d countdown -v instruct qwen` | `./run_evaluation.sh -E passk -d countdown -v instruct -m qwen -n 16` |
+| *(new)* LLaMA 3.1 8B pass@k on countdown | `./run_evaluation.sh -E passk -d countdown_cd4 -m llama` |
+| *(new)* LLaMA 3.1 8B base accuracy on MATH500 | `./run_evaluation.sh -E accuracy -d math -m llama -v base` |
 | `run_passk_experiments.sh -v instruct` | `./run_evaluation.sh -E passk -d countdown_cd4 -v instruct` |
 | `run_passk_experiments.sh -v all` | `./run_evaluation.sh -E passk -d countdown_cd4` |
 | `run_hard_benchmarks.sh -d math` | `./run_evaluation.sh -E passk -d math -n 64` |

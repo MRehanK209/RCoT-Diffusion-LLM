@@ -31,7 +31,7 @@ export CUDA_LAUNCH_BLOCKING=0
 # =============================================================================
 EXPERIMENT=""
 DATASET="countdown_cd4"
-TARGET="all"           # all | llada | dream | qwen
+TARGET="all"           # all | llada | dream | qwen | llama
 VARIANT="all"          # all | base | instruct
 METHOD="fast"          # fast | slow | both
 N_SAMPLES=""           # empty = auto per experiment
@@ -76,7 +76,7 @@ EXPERIMENT TYPES
              Only for diffusion models (LLaDA/Dream).
 
 MODEL SELECTION
-  -m, --model        llada | dream | qwen | all         (default: all)
+  -m, --model        llada | dream | qwen | llama | all  (default: all)
   -v, --variant      base | instruct | all              (default: all)
   --method           fast | slow | both                 (default: per-experiment)
 
@@ -251,6 +251,7 @@ BASE_MODELS=(
     ["llada"]="GSAI-ML/LLaDA-8B-Base"
     ["dream"]="Dream-org/Dream-v0-Base-7B"
     ["qwen"]="Qwen/Qwen2.5-7B"
+    ["llama"]="meta-llama/Llama-3.1-8B"
 )
 
 declare -A INST_MODELS
@@ -258,6 +259,7 @@ INST_MODELS=(
     ["llada"]="GSAI-ML/LLaDA-8B-Instruct"
     ["dream"]="Dream-org/Dream-v0-Instruct-7B"
     ["qwen"]="Qwen/Qwen2.5-7B-Instruct"
+    ["llama"]="meta-llama/Llama-3.1-8B-Instruct"
 )
 
 is_diffusion_model() {
@@ -696,11 +698,12 @@ run_one() {
 # =============================================================================
 FAMILIES=()
 case $TARGET in
-    all)   FAMILIES=(llada dream qwen) ;;
+    all)   FAMILIES=(llada dream qwen llama) ;;
     llada) FAMILIES=(llada) ;;
     dream) FAMILIES=(dream) ;;
     qwen)  FAMILIES=(qwen) ;;
-    *)     echo "ERROR: Unknown model '$TARGET' (use llada, dream, qwen, or all)"; exit 1 ;;
+    llama) FAMILIES=(llama) ;;
+    *)     echo "ERROR: Unknown model '$TARGET' (use llada, dream, qwen, llama, or all)"; exit 1 ;;
 esac
 
 get_models_for_variant() {
@@ -881,8 +884,8 @@ models = {}
 families = '${FAMILIES[*]}'.split()
 variant = '${VARIANT}'
 
-base_map = {'llada': 'GSAI-ML/LLaDA-8B-Base', 'dream': 'Dream-org/Dream-v0-Base-7B', 'qwen': 'Qwen/Qwen2.5-7B'}
-inst_map = {'llada': 'GSAI-ML/LLaDA-8B-Instruct', 'dream': 'Dream-org/Dream-v0-Instruct-7B', 'qwen': 'Qwen/Qwen2.5-7B-Instruct'}
+base_map = {'llada': 'GSAI-ML/LLaDA-8B-Base', 'dream': 'Dream-org/Dream-v0-Base-7B', 'qwen': 'Qwen/Qwen2.5-7B', 'llama': 'meta-llama/Llama-3.1-8B'}
+inst_map = {'llada': 'GSAI-ML/LLaDA-8B-Instruct', 'dream': 'Dream-org/Dream-v0-Instruct-7B', 'qwen': 'Qwen/Qwen2.5-7B-Instruct', 'llama': 'meta-llama/Llama-3.1-8B-Instruct'}
 diffusion = {'llada', 'dream'}
 
 method = '${METHOD}'
