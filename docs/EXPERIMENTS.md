@@ -257,6 +257,10 @@ all parameters:
 
 # AR (slow HF):
 {model}_{dataset}_{gen_length}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_ar.json
+
+# instruct_flat ablation (adds _flat before engine suffix):
+{model}_{dataset}_..._generations_flat_fast_dllm.json
+{model}_{dataset}_..._generations_flat_vllm.json
 ```
 
 Each JSON file contains:
@@ -264,6 +268,87 @@ Each JSON file contains:
 - `metrics`: timing and configuration metadata
 
 Comparison tables are saved as `results/{experiment}_{dataset}_comparison.json`.
+
+---
+
+## Prompt Modes (3-Way Comparison)
+
+The `--prompt_mode` flag and `--variant all3` enable a controlled comparison
+that disentangles instruction tuning from chat template effects. See
+[docs/PROMPT_MODES.md](PROMPT_MODES.md) for full details.
+
+| Mode | Checkpoint | Prompt | When to use |
+|------|-----------|--------|-------------|
+| `base_native` | Base | Flat string | Default for base models |
+| `instruct_flat` | Instruct | Same flat string as base | Ablation: instruct weights, base prompt |
+| `instruct_templated` | Instruct | Model-native chat template | Default for instruct models |
+
+```bash
+# Full 3-way comparison (base + instruct_templated + instruct_flat)
+./run_evaluation.sh -E passk -d countdown_cd4 -v all3
+
+# Run instruct-flat ablation separately
+./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_flat
+```
+
+**Result filenames:** `instruct_flat` runs include `_flat` in the filename
+(e.g., `..._generations_flat_fast_dllm.json`) to distinguish them from
+standard instruct results.
+
+---
+
+## LLaDA-Instruct EOS Overflow Fix
+
+LLaDA-Instruct suffers from a well-documented **EOS overflow** issue: during SFT,
+variable-length sequences are padded with `<|endoftext|>`, causing the model to
+learn to generate excessive EOS tokens during inference. This degrades output
+quality, especially for short-answer tasks like Countdown.
+
+**References:**
+- [LLaDA EVAL.md](https://github.com/ML-GSAI/LLaDA/blob/main/EVAL.md) — official parameter guidance
+- [Rainbow Padding (arXiv:2510.03680)](https://arxiv.org/abs/2510.03680) — root cause analysis
+- [Fast-dLLM Issue #5](https://github.com/NVlabs/Fast-dLLM/issues/5) — community reproduction issues
+
+### What the script does automatically
+
+When running **LLaDA-Instruct** (detected by model name), `run_evaluation.sh`
+auto-applies two fixes:
+
+1. **Semi-autoregressive generation** — smaller `block_length` forces block-by-block
+   generation with conditioning on previous blocks, dramatically improving arithmetic
+   coherence:
+
+   | Dataset            | Default `block_length` | LLaDA-Instruct override |
+   |--------------------|-----------------------:|------------------------:|
+   | countdown/sudoku   |                     32 |                       8 |
+   | gsm8k              |                     32 |                       8 |
+   | trip_planning      |                     32 |                      16 |
+   | math/aime          |                     32 |                      64 |
+
+   For countdown_cd4, `gen_length` also increases from 32 → 64 to prevent truncation.
+
+2. **EOS suppression** — `logits_eos_inf=True` and `confidence_eos_eot_inf=True`
+   are auto-enabled for LLaDA-Instruct. These prevent the model from filling
+   generation slots with EOS tokens.
+
+### Official results with these fixes
+
+From the LLaDA EVAL.md:
+
+| Config                    | GSM8K  | MATH   |
+|---------------------------|--------|--------|
+| Default (block_length=512)| 68.8%  | 29.6%  |
+| Semi-AR (block_length=8/64) | **78.9%** | **42.7%** |
+
+### Override or disable
+
+```bash
+# Force specific block_length (overrides auto-detection)
+./run_evaluation.sh -E passk -m llada -v instruct -b 32
+
+# Disable EOS suppression
+./run_evaluation.sh -E passk -m llada -v instruct --logits_eos_inf false --confidence_eos_eot_inf false
+```
 
 ---
 
@@ -330,3 +415,5 @@ what's missing.
 | `run_passk_experiments.sh -v all` | `./run_evaluation.sh -E passk -d countdown_cd4` |
 | `run_hard_benchmarks.sh -d math` | `./run_evaluation.sh -E passk -d math -n 64` |
 | `run_hard_benchmarks.sh -d aime -m llada` | `./run_evaluation.sh -E passk -d aime -m llada -n 64` |
+| *(new)* 3-way prompt comparison on cd4 | `./run_evaluation.sh -E passk -d countdown_cd4 -v all3` |
+| *(new)* instruct-flat ablation only | `./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_flat` |

@@ -5,6 +5,9 @@ import torch
 import numpy as np
 
 
+VALID_PROMPT_MODES = ("base_native", "instruct_flat", "instruct_templated")
+
+
 def parse_trip_response(response):
     """Parse a trip planning response into a list of (city, stay_days) tuples.
 
@@ -92,6 +95,15 @@ class TripPlanningDataset(torch.utils.data.Dataset):
 
     Source: eval/data/trip_planning.json in the Dream repo.
     1600 problems total (200 per num_cities from 3 to 10).
+
+    Prompt modes
+    ------------
+      base_native        — flat prompt + "\\nSOLUTION: " suffix
+      instruct_flat      — same flat string (no chat template)
+      instruct_templated — single user message wrapped in chat template
+                           (trip planning uses a domain-specific TASK format
+                           that doesn't decompose into user/assistant turns,
+                           so we keep the flat content in a single user turn)
     """
 
     def __init__(
@@ -100,11 +112,25 @@ class TripPlanningDataset(torch.utils.data.Dataset):
         num_examples=2,
         subsample=-1,
         is_base_model=False,
+        prompt_mode=None,
         **kwargs,
     ):
         self.tokenizer = tokenizer
         self.num_examples = num_examples
-        self.is_base_model = is_base_model
+
+        if prompt_mode is not None:
+            if prompt_mode not in VALID_PROMPT_MODES:
+                raise ValueError(
+                    f"Invalid prompt_mode={prompt_mode!r}. "
+                    f"Must be one of {VALID_PROMPT_MODES}"
+                )
+            self.prompt_mode = prompt_mode
+        else:
+            self.prompt_mode = "base_native" if is_base_model else "instruct_templated"
+
+        self.is_base_model = (self.prompt_mode == "base_native")
+
+        self.tokenizer.padding_side = "left"
 
         self._load_data()
 
@@ -116,7 +142,7 @@ class TripPlanningDataset(torch.utils.data.Dataset):
             self.subsample = np.arange(n_test)
 
         print(f"evaluating {len(self.subsample)} examples (trip planning)")
-        print(f"Model type: {'Base' if is_base_model else 'Instruct'}")
+        print(f"Prompt mode: {self.prompt_mode}")
 
     def _load_data(self):
         cur_path = os.path.dirname(os.path.abspath(__file__))
@@ -147,13 +173,35 @@ class TripPlanningDataset(torch.utils.data.Dataset):
 
         print(f"Trip Planning: {len(self.test_data)} problems loaded")
 
-    def create_prompt(self, prompt_text):
-        if self.is_base_model:
-            return prompt_text + "\nSOLUTION: "
+    # ------------------------------------------------------------------
+    # 3-way prompt dispatch
+    # ------------------------------------------------------------------
+
+    def create_flat_prompt(self, prompt_text):
+        """Flat prompt with SOLUTION suffix — base_native and instruct_flat."""
+        return prompt_text + "\nSOLUTION: "
+
+    def create_templated_instruct_prompt(self, prompt_text):
+        """Wrap the flat prompt in a single user message with chat template.
+
+        Trip planning uses a domain-specific TASK: format that doesn't
+        decompose cleanly into user/assistant turns, so we keep the full
+        prompt as a single user message.
+        """
         messages = [{"role": "user", "content": prompt_text}]
         return self.tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=False
         )
+
+    def create_prompt(self, prompt_text):
+        """Dispatch to the appropriate prompt builder based on prompt_mode."""
+        if self.prompt_mode in ("base_native", "instruct_flat"):
+            return self.create_flat_prompt(prompt_text)
+        return self.create_templated_instruct_prompt(prompt_text)
+
+    # ------------------------------------------------------------------
+    # Dataset interface
+    # ------------------------------------------------------------------
 
     def __len__(self):
         return len(self.subsample)
@@ -169,7 +217,7 @@ class TripPlanningDataset(torch.utils.data.Dataset):
         questions = [item[1] for item in batch]
         answers = [item[2] for item in batch]
         encoded = self.tokenizer(
-            prompts, padding_side="left", return_tensors="pt", padding="longest"
+            prompts, return_tensors="pt", padding="longest"
         )
         return {
             "input_ids": encoded.input_ids,

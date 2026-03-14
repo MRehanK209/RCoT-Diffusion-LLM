@@ -58,8 +58,9 @@ class AIME24Dataset(GSM8KDataset):
         system_prompt=AIME_SYSTEM_PROMPT,
         subsample=-1,
         is_base_model=False,
+        prompt_mode=None,
     ):
-        super().__init__(tokenizer, num_examples, add_reasoning, system_prompt, subsample, is_base_model)
+        super().__init__(tokenizer, num_examples, add_reasoning, system_prompt, subsample, is_base_model, prompt_mode)
 
     def load_test_dataset(self):
         self.dataset = load_dataset("math-ai/aime24", split="test")
@@ -84,9 +85,11 @@ class AIME24Dataset(GSM8KDataset):
 
         if not few_shot_examples:
             self.few_shot_prompt = ""
+            self._few_shot_messages = []
             return
 
         formatted_examples = []
+        self._few_shot_messages = []
         for example in few_shot_examples:
             input_text = example["question"]
             full_solution = example["answer"]
@@ -101,6 +104,7 @@ class AIME24Dataset(GSM8KDataset):
             formatted_examples.append(
                 f"Question: {input_text}\nAnswer:\n{formatted_answer}"
             )
+            self._few_shot_messages.append((f"Question: {input_text}", formatted_answer))
 
         self.few_shot_prompt = "\n\n".join(formatted_examples)
         if self.num_examples > 0:

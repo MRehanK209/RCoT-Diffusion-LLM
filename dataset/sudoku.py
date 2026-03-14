@@ -34,21 +34,20 @@ class SudokuDataset(GSM8KDataset):
         system_prompt=SUDOKU_SYSTEM_PROMPT,
         subsample=256,
         is_base_model=False,
+        prompt_mode=None,
     ):
         cur_path = os.path.dirname(os.path.abspath(__file__))
         self.sudoku_file_path = f"{cur_path}/../dataset/4x4_test_sudoku.csv"
-        super().__init__(tokenizer, num_examples, add_reasoning, system_prompt, subsample, is_base_model)
+        super().__init__(tokenizer, num_examples, add_reasoning, system_prompt, subsample, is_base_model, prompt_mode)
 
     def load_test_dataset(self):
         """Load the Sudoku dataset from the CSV file."""
         df = pd.read_csv(self.sudoku_file_path, dtype={"Puzzle": str, "Solution": str})
-        # Convert pandas DataFrame to HuggingFace Dataset using from_pandas
         self.dataset = HFDataset.from_pandas(df)
         print("Loaded Testing Sudoku dataset with {} examples".format(len(self.dataset)))
 
     def format_sudoku_grid(self, sudoku_str):
         """Simplified function to format a sudoku string."""
-        # Simply pass through the raw string as requested
         return sudoku_str
 
     def validate_sudoku(self, solution_str, ground_truth=None, question=None):
@@ -65,16 +64,12 @@ class SudokuDataset(GSM8KDataset):
         if solution_str is None or len(solution_str) == 0:
             return 0, empty_cells, 0.0
 
-        # Handle length issues
         if len(solution_str) < 16:
-            # Pad with zeros if too short
             solution_str = solution_str + "0" * (16 - len(solution_str))
         elif len(solution_str) > 16:
-            # Truncate if too long
             solution_str = solution_str[:16]
 
         assert len(puzzle_str) == 16
-        # Count correct cells among originally empty cells
         correct_cells = sum(1 for i in empty_indices if solution_str[i] == ground_truth[i])
         accuracy = correct_cells / empty_cells
         return correct_cells, empty_cells, accuracy
@@ -84,7 +79,6 @@ class SudokuDataset(GSM8KDataset):
         puzzle = self.dataset[self.subsample[idx].item()]["Puzzle"]
         solution = self.dataset[self.subsample[idx].item()]["Solution"]
 
-        # Modified question format to reference the examples in the system prompt
         question = f"Solve the following Sudoku puzzle: {puzzle}\n"
 
         assert len(puzzle) == 16, f"Invalid puzzle length: {len(puzzle)}"

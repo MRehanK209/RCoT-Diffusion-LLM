@@ -6,11 +6,14 @@ import numpy as np
 from collections import Counter
 
 
-# Official Dream prompt templates (from eval_planning.py)
+# Official Dream prompt templates (from eval_planning.py) with an explicit
+# format suffix so both base and instruct models produce compact equations.
+_CD_FORMAT = " Output ONLY comma-separated equations like a+b=c,c-d=e with no explanation."
+
 CD_TEMPLATES = {
-    "cd3": "Given 4 numbers, use +-*/ to operate over the first three numbers to achieve the last number.",
-    "cd4": "Given 5 numbers, use +-*/ to operate over the first four numbers to achieve the fifth number.",
-    "cd5": "Given 6 numbers, use +-*/ to operate over the first five numbers to achieve the last number.",
+    "cd3": "Given 4 numbers, use +-*/ to operate over the first three numbers to achieve the last number." + _CD_FORMAT,
+    "cd4": "Given 5 numbers, use +-*/ to operate over the first four numbers to achieve the fifth number." + _CD_FORMAT,
+    "cd5": "Given 6 numbers, use +-*/ to operate over the first five numbers to achieve the last number." + _CD_FORMAT,
 }
 
 CD_FILES = {
@@ -18,6 +21,30 @@ CD_FILES = {
     "cd4": "cd4_test.jsonl",
     "cd5": "cd5_test.jsonl",
 }
+
+# ---------------------------------------------------------------------------
+# Prompt modes for 3-way comparison
+#
+#   base_native          — base checkpoint + plain completion prompt.
+#   instruct_flat        — instruct checkpoint + same flat string as base.
+#                          Isolates the effect of instruction tuning on the
+#                          weights while holding the prompt format constant.
+#                          NOTE: this does NOT purely measure "instruction
+#                          tuning quality" — an instruct model that was
+#                          fine-tuned exclusively on chat-formatted data may
+#                          degrade on flat prompts, so poor instruct_flat
+#                          performance can reflect prompt-format mismatch
+#                          rather than capability loss.
+#   instruct_templated   — instruct checkpoint + model-native chat template
+#                          (multi-turn few-shot). Shows combined effect of
+#                          instruction tuning + proper prompt formatting.
+#
+# Comparing (instruct_flat vs base_native) reveals how much flat-text
+# capability the instruct weights retained.
+# Comparing (instruct_templated vs instruct_flat) reveals how much the
+# chat template helps (or is necessary) for the instruct checkpoint.
+# ---------------------------------------------------------------------------
+VALID_PROMPT_MODES = ("base_native", "instruct_flat", "instruct_templated")
 
 
 def cd_score_single(input_str, pred):
@@ -73,6 +100,16 @@ class CTDDataset(torch.utils.data.Dataset):
     Supports cd3 (3 operands), cd4 (4 operands), cd5 (5 operands).
     The first `num_examples` entries from the data file are used as
     few-shot demonstrations (official default: 8).
+
+    Prompt modes
+    ------------
+    prompt_mode controls how the prompt string is serialized:
+      - "base_native"        : flat completion prompt (for base checkpoints)
+      - "instruct_flat"      : same flat string, no chat template (ablation)
+      - "instruct_templated" : multi-turn chat template (for instruct models)
+
+    If prompt_mode is not provided, it is inferred from is_base_model
+    for backward compatibility.
     """
 
     def __init__(
@@ -82,12 +119,32 @@ class CTDDataset(torch.utils.data.Dataset):
         subsample=256,
         is_base_model=False,
         difficulty="cd3",
+        prompt_mode=None,
         **kwargs,
     ):
         self.tokenizer = tokenizer
         self.num_examples = num_examples
-        self.is_base_model = is_base_model
         self.difficulty = difficulty
+
+        # Resolve prompt_mode: explicit value takes priority, otherwise
+        # infer from the legacy is_base_model flag.
+        if prompt_mode is not None:
+            if prompt_mode not in VALID_PROMPT_MODES:
+                raise ValueError(
+                    f"Invalid prompt_mode={prompt_mode!r}. "
+                    f"Must be one of {VALID_PROMPT_MODES}"
+                )
+            self.prompt_mode = prompt_mode
+        else:
+            self.prompt_mode = "base_native" if is_base_model else "instruct_templated"
+
+        # Keep is_base_model as a derived attribute for backward compat
+        # with any external code that reads it.
+        self.is_base_model = (self.prompt_mode == "base_native")
+
+        # Set padding_side on the tokenizer object rather than passing it
+        # per-call, since some tokenizers don't honor it as a kwarg.
+        self.tokenizer.padding_side = "left"
 
         self._load_data()
         self._build_prompt_prefix()
@@ -101,7 +158,11 @@ class CTDDataset(torch.utils.data.Dataset):
             self.subsample = np.arange(n_test)
 
         print(f"evaluating {len(self.subsample)} examples (countdown {difficulty})")
-        print(f"Model type: {'Base' if is_base_model else 'Instruct'}")
+        print(f"Prompt mode: {self.prompt_mode}")
+
+    # ------------------------------------------------------------------
+    # Data loading (unchanged)
+    # ------------------------------------------------------------------
 
     def _load_data(self):
         cur_path = os.path.dirname(os.path.abspath(__file__))
@@ -118,8 +179,15 @@ class CTDDataset(torch.utils.data.Dataset):
             f"{self.num_examples} few-shot, {len(self.test_data)} test"
         )
 
+    # ------------------------------------------------------------------
+    # Prompt construction (unchanged)
+    # ------------------------------------------------------------------
+
     def _build_prompt_prefix(self):
-        """Build the prompt prefix with task description and few-shot examples."""
+        """Build the flat prompt prefix with task description and few-shot examples.
+
+        Used by both base_native and instruct_flat modes.
+        """
         template = CD_TEMPLATES[self.difficulty] + "\n\n"
         if self.num_examples > 0:
             examples = "\n\n".join(
@@ -129,14 +197,48 @@ class CTDDataset(torch.utils.data.Dataset):
             template += examples + "\n\n"
         self.prompt_prefix = template
 
-    def create_prompt(self, input_str):
-        prompt_text = self.prompt_prefix + f"Input: {input_str}\nOutput: "
-        if self.is_base_model:
-            return prompt_text
-        messages = [{"role": "user", "content": prompt_text}]
+    # ------------------------------------------------------------------
+    # 3-way prompt dispatch
+    # ------------------------------------------------------------------
+
+    def create_flat_prompt(self, input_str):
+        """Flat completion prompt — used by base_native and instruct_flat.
+
+        Returns a plain string with the task description, few-shot examples,
+        and the final Input:/Output: pair. No chat template is applied.
+        """
+        return self.prompt_prefix + f"Input: {input_str}\nOutput: "
+
+    def create_templated_instruct_prompt(self, input_str):
+        """Multi-turn chat prompt — used by instruct_templated.
+
+        Structures the same content as the flat prompt into the model's
+        native chat template:
+          system  = task description
+          user_i  = "Input: {numbers}"
+          asst_i  = "{equations}"   (for each few-shot example)
+          user_N  = "Input: {test_numbers}"   (final turn, model generates)
+        """
+        messages = [
+            {"role": "system", "content": CD_TEMPLATES[self.difficulty]},
+        ]
+        for d in self.few_shot_data:
+            messages.append({"role": "user", "content": f"Input: {d['input']}"})
+            messages.append({"role": "assistant", "content": d["output"]})
+        messages.append({"role": "user", "content": f"Input: {input_str}"})
         return self.tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=False
         )
+
+    def create_prompt(self, input_str):
+        """Dispatch to the appropriate prompt builder based on prompt_mode."""
+        if self.prompt_mode in ("base_native", "instruct_flat"):
+            return self.create_flat_prompt(input_str)
+        return self.create_templated_instruct_prompt(input_str)
+
+    # ------------------------------------------------------------------
+    # Dataset interface (unchanged)
+    # ------------------------------------------------------------------
 
     def __len__(self):
         return len(self.subsample)
@@ -153,7 +255,7 @@ class CTDDataset(torch.utils.data.Dataset):
         questions = [item[1] for item in batch]
         answers = [item[2] for item in batch]
         encoded = self.tokenizer(
-            prompts, padding_side="left", return_tensors="pt", padding="longest"
+            prompts, return_tensors="pt", padding="longest"
         )
         return {
             "input_ids": encoded.input_ids,
