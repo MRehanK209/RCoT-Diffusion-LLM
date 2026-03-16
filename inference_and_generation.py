@@ -137,6 +137,25 @@ def normalize_ground_truth(gt_answer, data="gsm8k"):
 _EOS_MARKERS = ['<|endoftext|>', '<|end|>', '<|im_end|>', '</s>', '<|eot_id|>']
 
 
+def _resolve_prompt_mode(model_name, prompt_mode):
+    if prompt_mode in (None, "", "auto"):
+        return "instruct_templated" if "instruct" in model_name.lower() else "base_native"
+    return prompt_mode
+
+
+def _prompt_mode_tag(model_name, prompt_mode):
+    resolved = _resolve_prompt_mode(model_name, prompt_mode)
+    if resolved == "base_native":
+        return "_base_native"
+    if resolved == "instruct_templated":
+        return "_instruct_templated"
+    if resolved == "instruct_flat":
+        return "_instruct_flat"
+    if resolved == "instruct_single_turn":
+        return "_instruct_single_turn"
+    return f"_{resolved}"
+
+
 def _truncate_at_eos(text):
     """Truncate text at the earliest EOS marker found."""
     earliest = len(text)
@@ -191,7 +210,8 @@ def evaluate_auto_regressive_model(
     top_p,
     n_samples,
     device = "cuda",
-    output_dir="results"
+    output_dir="results",
+    prompt_mode=None,
 ):
     """
     Evaluate an auto-regressive model on a dataset with incremental saving and resume capability.
@@ -199,7 +219,9 @@ def evaluate_auto_regressive_model(
     # Determine output filename BEFORE loading model
     model_name_clean = model_name.replace("/", "_")
     data_tag = f"_{data}" if data != "gsm8k" else ""
-    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_ar.json"
+    resolved_prompt_mode = _resolve_prompt_mode(model_name, prompt_mode)
+    pm_tag = _prompt_mode_tag(model_name, prompt_mode)
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations{pm_tag}_ar.json"
     
     # Check for existing results and resume capability
     all_generations = []
@@ -240,11 +262,12 @@ def evaluate_auto_regressive_model(
             subsample=num_evals_to_use,
             num_examples=few_shot,
             is_base_model=is_base_model,
+            prompt_mode=resolved_prompt_mode,
         )
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=False,  # CRITICAL: Don't shuffle to maintain reproducibility
+        shuffle=False,
         collate_fn=dataset.collate_fn,
     )
 
@@ -393,13 +416,16 @@ def evaluate_dllm(
     top_k = None,
     n_samples = 1,
     device = "cuda",
-    output_dir = "results"
+    output_dir = "results",
+    prompt_mode = None,
     ):
 
     # Determine output filename BEFORE loading model
     model_name_clean = diffusion_model_name.replace("/", "_")
     data_tag = f"_{data}" if data != "gsm8k" else ""
-    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{steps}_{block_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_dllm.json"
+    resolved_prompt_mode = _resolve_prompt_mode(diffusion_model_name, prompt_mode)
+    pm_tag = _prompt_mode_tag(diffusion_model_name, prompt_mode)
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{steps}_{block_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations{pm_tag}_dllm.json"
     
     # Check for existing results and resume capability
     all_generations = []
@@ -441,11 +467,12 @@ def evaluate_dllm(
             subsample=num_evals_to_use,
             num_examples=few_shot,
             is_base_model=is_base_model,
+            prompt_mode=resolved_prompt_mode,
         )
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=False,  # CRITICAL: Don't shuffle to maintain reproducibility
+        shuffle=False,
         collate_fn=dataset.collate_fn,
     )
     total_processed = len(all_generations) * n_samples if all_generations else 0
@@ -498,8 +525,6 @@ def evaluate_dllm(
                 block_length=block_length,  # LLaDA only
                 cfg_scale=cfg_scale,  # LLaDA only
                 remasking=remasking,  # LLaDA only
-                logits_eos_inf=True,  # LLaDA: Prevent early EOS during diffusion
-                confidence_eos_eot_inf=False,  # LLaDA: Allow EOS in confidence calculation
                 alg=alg,  # Dream only
                 alg_temp=alg_temp,  # Dream only
                 top_p=top_p,  # Dream only
@@ -613,12 +638,19 @@ def evaluate_fast_dllm(
     n_samples = 1,
     output_dir = "results",
     device = "cuda",
+    prompt_mode = None,
     ):
 
     # Determine output filename BEFORE loading model
     model_name_clean = diffusion_model_name.replace("/", "_")
     data_tag = f"_{data}" if data != "gsm8k" else ""
-    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{steps}_{block_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_fast_dllm.json"
+    resolved_prompt_mode = _resolve_prompt_mode(diffusion_model_name, prompt_mode)
+    pm_tag = _prompt_mode_tag(diffusion_model_name, prompt_mode)
+    filename = (
+        f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{steps}_{block_length}_"
+        f"{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations"
+        f"{pm_tag}_fast_dllm.json"
+    )
     os.makedirs(output_dir, exist_ok=True)
 
     # Check for existing results and resume capability
@@ -657,12 +689,12 @@ def evaluate_fast_dllm(
         diffusion_model_name = diffusion_model_name + "-base"
     is_base_model = 'base' in diffusion_model_name.lower()
 
-    # Create dataset - seed ensures same questions every time
     dataset = DATASET_MAP[data](
             tokenizer,
             subsample=num_evals_to_use,
             num_examples=few_shot,
             is_base_model=is_base_model,
+            prompt_mode=resolved_prompt_mode,
         )
     dataloader = DataLoader(
         dataset,
@@ -829,7 +861,7 @@ def evaluate_vllm_model(
     data = "gsm8k",
     num_evals_to_use = 256,
     few_shot = 4,
-    batch_size = 1,  # vLLM handles batching internally
+    batch_size = 1,
     gen_length = 256,
     temperature = 0.7,
     top_p = 0.95,
@@ -838,34 +870,19 @@ def evaluate_vllm_model(
     output_dir = "results",
     tensor_parallel_size = 1,
     gpu_memory_utilization = 0.9,
+    prompt_mode = None,
     ):
 
     """
     Evaluate an auto-regressive model using vLLM for optimized inference.
-    
-    Args:
-        model_name: HuggingFace model path
-        data: Dataset name (gsm8k, math, countdown, sudoku)
-        num_evals_to_use: Number of questions to evaluate
-        few_shot: Number of few-shot examples
-        batch_size: Must be 1 for this implementation (vLLM handles internal batching)
-        gen_length: Maximum new tokens to generate
-        temperature: Sampling temperature (0.0 for greedy)
-        top_p: Nucleus sampling parameter
-        top_k: Top-k sampling parameter
-        n_samples: Number of generations per question
-        output_dir: Directory to save results
-        tensor_parallel_size: Number of GPUs for tensor parallelism
-        gpu_memory_utilization: Fraction of GPU memory to use (0.0-1.0)
-    
-    Returns:
-        filename: Path to saved results JSON
     """
     
     # Determine output filename BEFORE loading model
     model_name_clean = model_name.replace("/", "_")
     data_tag = f"_{data}" if data != "gsm8k" else ""
-    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations_vllm.json"
+    resolved_prompt_mode = _resolve_prompt_mode(model_name, prompt_mode)
+    pm_tag = _prompt_mode_tag(model_name, prompt_mode)
+    filename = f"{output_dir}/{model_name_clean}{data_tag}_{gen_length}_{batch_size}_{temperature}_{few_shot}_{num_evals_to_use}_{n_samples}_generations{pm_tag}_vllm.json"
     # Check for existing results and resume capability
     all_generations = []
     processed_questions = set()
@@ -912,15 +929,14 @@ def evaluate_vllm_model(
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
     
-    # Determine if model is base or instruct
     is_base_model = 'base' in model_name.lower() or 'instruct' not in model_name.lower()
     
-    # Create dataset - seed ensures same questions every time
     dataset = DATASET_MAP[data](
         tokenizer,
         subsample=num_evals_to_use,
         num_examples=few_shot,
         is_base_model=is_base_model,
+        prompt_mode=resolved_prompt_mode,
     )
     
     # Use batch_size=1 for DataLoader (process one question at a time)

@@ -15,436 +15,770 @@
 # SPDX-License-Identifier: Apache-2.0
 # Modified from LLaDA repos: https://github.com/ML-GSAI/LLaDA
 
+from __future__ import annotations
+
+import inspect
+from collections.abc import Sequence
+from typing import Optional
+
 import torch
-import numpy as np
-import torch.nn.functional as F
-import os
 
-# Note: These imports are not needed for standalone generation functions
-# They were causing import errors and are not used in the generation functions
-from transformers import AutoTokenizer, AutoModel
-from llada.modelling_llada import LLaDAModelLM
-from torch.cuda import nvtx
 
-def add_gumbel_noise(logits, temperature):
-    '''
-    The Gumbel max is a method for sampling categorical distributions.
-    According to arXiv:2409.02908, for MDM, low-precision Gumbel Max improves perplexity score but reduces generation quality.
-    Thus, we use float64.
-    '''
-    if temperature == 0:
+def _normalize_token_id_sequence(token_ids: Optional[Sequence[int]]) -> tuple[int, ...]:
+    if token_ids is None:
+        return ()
+
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for token_id in token_ids:
+        if token_id is None:
+            continue
+        token_id = int(token_id)
+        if token_id not in seen:
+            seen.add(token_id)
+            normalized.append(token_id)
+    return tuple(normalized)
+
+
+def _resolve_suppressed_token_ids(
+    suppressed_sample_token_ids: Optional[Sequence[int]] = None,
+    suppressed_confidence_token_ids: Optional[Sequence[int]] = None,
+    eos_token_id: Optional[int] = None,
+    logits_eos_inf: bool = False,
+    confidence_eos_eot_inf: bool = False,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    sample_ids = list(_normalize_token_id_sequence(suppressed_sample_token_ids))
+    confidence_ids = list(_normalize_token_id_sequence(suppressed_confidence_token_ids))
+
+    if eos_token_id is not None and logits_eos_inf:
+        sample_ids.append(int(eos_token_id))
+    if eos_token_id is not None and confidence_eos_eot_inf:
+        confidence_ids.append(int(eos_token_id))
+
+    return (
+        _normalize_token_id_sequence(sample_ids),
+        _normalize_token_id_sequence(confidence_ids),
+    )
+
+
+def _suppress_logits(
+    logits: torch.Tensor,
+    suppressed_token_ids: Sequence[int],
+) -> torch.Tensor:
+    if not suppressed_token_ids:
         return logits
-    logits = logits.to(torch.float64)
-    noise = torch.rand_like(logits, dtype=torch.float64)
-    gumbel_noise = (- torch.log(noise)) ** temperature
-    return logits.exp() / gumbel_noise
+
+    suppressed = logits.clone()
+    token_index = torch.tensor(
+        suppressed_token_ids,
+        device=logits.device,
+        dtype=torch.long,
+    )
+    suppressed.index_fill_(-1, token_index, torch.finfo(suppressed.dtype).min)
+    return suppressed
 
 
-# def get_num_transfer_tokens(mask_index, steps):
-#     '''
-#     In the reverse process, the interval [0, 1] is uniformly discretized into steps intervals.
-#     Furthermore, because LLaDA employs a linear noise schedule (as defined in Eq. (8)),
-#     the expected number of tokens transitioned at each step should be consistent.
+def sample_gumbel_argmax(
+    logits: torch.Tensor,
+    temperature: float,
+    chunk_size: Optional[int] = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
+) -> torch.Tensor:
+    """Sample token ids with Gumbel-Max without materializing a full noisy logits tensor.
 
-#     This function is designed to precompute the number of tokens that need to be transitioned at each step.
-#     '''
-#     mask_num = mask_index.sum(dim=1, keepdim=True)
+    This is distribution-equivalent to taking `argmax(logits + temperature * gumbel)`
+    while reducing peak memory from O(B * L * V) extra storage to O(B * L * chunk_size).
+    When `temperature == 0`, this is exactly greedy argmax and remains deterministic.
+    """
+    if temperature == 0:
+        return torch.argmax(logits, dim=-1)
 
-#     base = mask_num // steps
-#     remainder = mask_num % steps
+    if chunk_size is None or chunk_size <= 0:
+        chunk_size = logits.shape[-1]
 
-#     num_transfer_tokens = torch.zeros(mask_num.size(0), steps, device=mask_index.device, dtype=torch.int64) + base
+    batch_shape = logits.shape[:-1]
+    vocab_size = logits.shape[-1]
+    best_scores = torch.full(
+        batch_shape,
+        torch.finfo(gumbel_dtype).min,
+        device=logits.device,
+        dtype=gumbel_dtype,
+    )
+    best_indices = torch.zeros(batch_shape, device=logits.device, dtype=torch.long)
+    tiny = torch.finfo(gumbel_dtype).tiny
 
-#     for i in range(mask_num.size(0)):
-#         num_transfer_tokens[i, :remainder[i]] += 1
+    for start in range(0, vocab_size, chunk_size):
+        stop = min(start + chunk_size, vocab_size)
+        logits_chunk = logits[..., start:stop].to(gumbel_dtype)
+        uniform = torch.rand(logits_chunk.shape, device=logits.device, dtype=gumbel_dtype)
+        uniform.clamp_(min=tiny, max=1.0 - torch.finfo(gumbel_dtype).eps)
+        chunk_scores = logits_chunk - temperature * torch.log(-torch.log(uniform))
+        chunk_best_scores, chunk_best_idx = torch.max(chunk_scores, dim=-1)
 
-#     return num_transfer_tokens
+        update_mask = chunk_best_scores > best_scores
+        best_scores = torch.where(update_mask, chunk_best_scores, best_scores)
+        best_indices = torch.where(update_mask, chunk_best_idx + start, best_indices)
+
+    return best_indices
+
 
 def get_num_transfer_tokens(block_mask_index: torch.Tensor, steps: int) -> torch.Tensor:
-    """
-    block_mask_index: (B, L) bool – which positions are masked in the current block
-    returns: (B, steps) int – how many tokens to transfer at each step per batch item
-    """
-    device = block_mask_index.device
-    dtype = torch.long
+    """Distribute masked-token transfers evenly across diffusion steps."""
+    if block_mask_index.ndim != 2:
+        raise ValueError(f"Expected block_mask_index to have shape (B, L), got {tuple(block_mask_index.shape)}")
+    if steps <= 0:
+        raise ValueError(f"steps must be positive, got {steps}")
 
-    total = block_mask_index.sum(dim=1)                  # (B,)
-    base  = torch.div(total, steps, rounding_mode='floor')  # (B,)
-    rem   = total - base * steps                         # (B,)
+    total = block_mask_index.sum(dim=1, dtype=torch.long)
+    base = torch.div(total, steps, rounding_mode="floor")
+    remainder = total - base * steps
 
-    # Start with base for all steps
-    num_transfer_tokens = base.unsqueeze(1).expand(-1, steps).to(dtype)  # (B, steps)
-
-    # Add +1 to the first `rem[b]` steps for each batch b — without tensor slicing
-    cols = torch.arange(steps, device=device).unsqueeze(0)               # (1, steps)
-    add_mask = cols < rem.unsqueeze(1)                                   # (B, steps)
-    num_transfer_tokens = num_transfer_tokens + add_mask.to(dtype)       # (B, steps)
-
+    num_transfer_tokens = base.unsqueeze(1).expand(-1, steps).clone()
+    cols = torch.arange(steps, device=block_mask_index.device).unsqueeze(0)
+    num_transfer_tokens += (cols < remainder.unsqueeze(1)).to(torch.long)
     return num_transfer_tokens
 
 
+def _prepare_generation_attention_mask(
+    prompt: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    gen_length: int,
+) -> Optional[torch.Tensor]:
+    if attention_mask is None:
+        return None
 
-@ torch.no_grad()
-def generate(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
-             remasking='low_confidence', mask_id=126336, threshold=None, factor=None):
-    '''
-    Args:
-        model: Mask predictor.
-        prompt: A tensor of shape (1, L).
-        steps: Sampling steps, less than or equal to gen_length.
-        gen_length: Generated answer length.
-        block_length: Block length, less than or equal to gen_length. If less than gen_length, it means using semi_autoregressive remasking.
-        temperature: Categorical distribution sampling temperature.
-        cfg_scale: Unsupervised classifier-free guidance scale.
-        remasking: Remasking strategy. 'low_confidence' or 'random'.
-        mask_id: The toke id of [MASK] is 126336.
-    '''
-    x = torch.full((prompt.shape[0], prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
-    x[:, :prompt.shape[1]] = prompt.clone()
-
-    assert gen_length % block_length == 0
-    num_blocks = gen_length // block_length
-
-    assert steps % num_blocks == 0
-    steps = steps // num_blocks
-
-    nfe = 0
-    for num_block in range(num_blocks):
-        block_mask_index = (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length] == mask_id)
-        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
-        i = 0
-        while True:
-            nfe += 1
-            mask_index = (x == mask_id)
-            logits = model(x).logits
-            mask_index[:, prompt.shape[1] + (num_block + 1) * block_length:] = 0
-            if factor is None:
-                x0, transfer_index = get_transfer_index(logits, temperature, remasking, mask_index, x, num_transfer_tokens[:, i] if threshold is None else None, threshold)
-            else:
-                x0, transfer_index = get_transfer_index_dynamic(logits, temperature, remasking, mask_index, x, None, factor)
-            x[transfer_index] = x0[transfer_index]
-            i += 1
-            if (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length] == mask_id).sum() == 0:
-                break
-    return x, nfe
+    gen_attention_mask = torch.ones(
+        (prompt.shape[0], gen_length),
+        dtype=attention_mask.dtype,
+        device=prompt.device,
+    )
+    return torch.cat([attention_mask.to(prompt.device), gen_attention_mask], dim=-1)
 
 
-
-@ torch.no_grad()
-def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
-             remasking='low_confidence', mask_id=126336, threshold=None, factor=None):
-    '''
-    Args:
-        model: Mask predictor.
-        prompt: A tensor of shape (1, L).
-        steps: Sampling steps, less than or equal to gen_length.
-        gen_length: Generated answer length.
-        block_length: Block length, less than or equal to gen_length. If less than gen_length, it means using semi_autoregressive remasking.
-        temperature: Categorical distribution sampling temperature.
-        cfg_scale: Unsupervised classifier-free guidance scale.
-        remasking: Remasking strategy. 'low_confidence' or 'random'.
-        mask_id: The toke id of [MASK] is 126336.
-    '''
-    x = torch.full((prompt.shape[0], prompt.shape[1] + gen_length), mask_id, dtype=torch.long).to(model.device)
-    x[:, :prompt.shape[1]] = prompt.clone()
-
-    assert gen_length % block_length == 0
-    num_blocks = gen_length // block_length
-
-    assert steps % num_blocks == 0
-    steps = steps // num_blocks
-
-    nfe = 0
-            
-    for num_block in range(num_blocks):
-        current_block_start = prompt.shape[1] + num_block * block_length
-        current_block_end = current_block_start + block_length
-
-        block_mask_index = (x[:, current_block_start:current_block_end] == mask_id)
-        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
-
-        output = model(x, use_cache=True)
-        past_key_values = output.past_key_values
-
-        mask_index = (x == mask_id)
-        mask_index[:, current_block_end:] = 0
-        if factor is None:
-            x0, transfer_index = get_transfer_index(output.logits, temperature, remasking, mask_index, x, num_transfer_tokens[:, 0] if threshold is None else None, threshold)
-        else:
-            x0, transfer_index = get_transfer_index_dynamic(output.logits, temperature, remasking, mask_index, x, None, factor)
-        x[transfer_index] = x0[transfer_index]
-
-        new_past_key_values = []
-        for i in range(len(past_key_values)):
-            new_past_key_values.append(())
-            for j in range(len(past_key_values[i])):
-                new_past_key_values[i] += (past_key_values[i][j][:, :, :current_block_start],)
-        
-        past_key_values = new_past_key_values
-        nfe += 1
-        
-        i = 1
-        while True:
-            if (x[:, current_block_start:current_block_end] == mask_id).sum() == 0:
-                break
-            nfe += 1
-            mask_index = (x[:, current_block_start:] == mask_id)
-            mask_index[:, block_length:] = 0
-
-            logits = model(x[:, current_block_start:], past_key_values=past_key_values, use_cache=True).logits
-
-            logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
-            x0 = torch.argmax(logits_with_noise, dim=-1) # b, l
-
-            if factor is None:
-                x0, transfer_index = get_transfer_index(logits, temperature, remasking, mask_index, 
-                                                x[:, current_block_start:], num_transfer_tokens[:, i] if threshold is None else None, threshold)
-            else:
-                x0, transfer_index = get_transfer_index_dynamic(logits, temperature, remasking, mask_index, 
-                                                x[:, current_block_start:], None, factor)
-            x[:, current_block_start:][transfer_index] = x0[transfer_index]
-            
-            i += 1
+def _compute_token_confidence(
+    logits: torch.Tensor,
+    token_ids: torch.Tensor,
+    compute_dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    logits_fp = logits.to(compute_dtype)
+    chosen_logits = torch.gather(logits_fp, dim=-1, index=token_ids.unsqueeze(-1)).squeeze(-1)
+    log_denom = torch.logsumexp(logits_fp, dim=-1)
+    return torch.exp(chosen_logits - log_denom)
 
 
-    return x, nfe
+def _propose_tokens_and_confidence(
+    logits: torch.Tensor,
+    temperature: float,
+    remasking: str,
+    mask_index: torch.Tensor,
+    x: torch.Tensor,
+    suppressed_sample_token_ids: Sequence[int],
+    suppressed_confidence_token_ids: Sequence[int],
+    gumbel_chunk_size: Optional[int],
+    gumbel_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    sample_logits = _suppress_logits(logits, suppressed_sample_token_ids)
+    proposed_tokens = sample_gumbel_argmax(
+        sample_logits,
+        temperature=temperature,
+        chunk_size=gumbel_chunk_size,
+        gumbel_dtype=gumbel_dtype,
+    )
 
-@torch.no_grad()
-def generate_with_dual_cache(
-    model, prompt, steps=128, gen_length=128, block_length=128, temperature=0.,
-    remasking="low_confidence", mask_id=126336, threshold=None, factor=None
-):
-    B = prompt.shape[0]
-    Lp = int(prompt.shape[1])  # Python int, not Tensor
-    assert gen_length % block_length == 0
-    num_blocks = gen_length // block_length
+    if remasking == "low_confidence":
+        confidence_logits = sample_logits
+        extra_confidence_ids = tuple(
+            token_id for token_id in suppressed_confidence_token_ids if token_id not in suppressed_sample_token_ids
+        )
+        if extra_confidence_ids:
+            confidence_logits = _suppress_logits(confidence_logits, extra_confidence_ids)
+        token_confidence = _compute_token_confidence(confidence_logits, proposed_tokens)
+    elif remasking == "random":
+        token_confidence = torch.rand(mask_index.shape, device=mask_index.device, dtype=torch.float32)
+    else:
+        raise NotImplementedError(remasking)
 
-    assert steps % num_blocks == 0
-    steps_per_block = steps // num_blocks
-
-    # x: (B, Lp + gen_length)
-    x = torch.full((B, Lp + gen_length), mask_id, dtype=torch.long, device=model.device)
-    x[:, :Lp] = prompt
-
-    nfe = 0
-
-    for nb in range(num_blocks):
-        s = Lp + nb * block_length
-        e = s + block_length
-
-        # Masks/indices for the current block
-        block_mask_index = (x[:, s:e] == mask_id)  # (B, block_length)
-        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps_per_block)  # (B, steps_per_block)
-
-        # 1) Warm KV-cache on the full prefix once per block
-        out_full = model(x, use_cache=True)
-        past_key_values = out_full.past_key_values
-        nfe += 1
-
-        # Build a replace_position tensor indicating the block range (static slice)
-        replace_position = torch.zeros_like(x, dtype=torch.bool)
-        replace_position[:, s:e] = True  # boolean mask (not a dynamic slice bound)
-
-        # Step 0: do an initial transfer on the full logits
-        global_mask_index = (x == mask_id)
-        # Do not touch beyond current block in this phase
-        global_mask_index[:, e:] = False
-
-        if factor is None:
-            quota0 = None if threshold is not None else num_transfer_tokens[:, 0]  # (B,)
-            x0, transfer_index = get_transfer_index(
-                out_full.logits, temperature, remasking, global_mask_index, x, quota0, threshold
-            )
-        else:
-            x0, transfer_index = get_transfer_index_dynamic(
-                out_full.logits, temperature, remasking, global_mask_index, x, None, factor
-            )
-
-        # In-place update via torch.where (no tensor-slice assignment with mask)
-        x = torch.where(transfer_index, x0, x)
-
-        # 2) Semi-autoregressive refinement, fixed number of steps (graph-friendly)
-        #    Each iteration runs on the current block with KV-cache and replace_position
-        for i in range(1, steps_per_block):
-            # Evaluate logits only for current block with cache
-            if (x[:, s:e] == mask_id).sum() == 0:
-                break
-            logits_blk = model(
-                x[:, s:e], past_key_values=past_key_values, use_cache=True, replace_position=replace_position
-            ).logits  # shape expected by get_transfer_index*
-
-            # Mask and quota for this step (all tensor ops)
-            mask_blk = (x[:, s:e] == mask_id)  # (B, block_length)
-
-            if factor is None:
-                quota_i = None if threshold is not None else num_transfer_tokens[:, i]  # (B,)
-                x0_blk, transfer_idx_blk = get_transfer_index(
-                    logits_blk, temperature, remasking, mask_blk, x[:, s:e], quota_i, threshold
-                )
-            else:
-                x0_blk, transfer_idx_blk = get_transfer_index_dynamic(
-                    logits_blk, temperature, remasking, mask_blk, x[:, s:e], None, factor
-                )
-
-            # Merge back into x[:, s:e] using torch.where (no masked slice assignment)
-            blk_old = x[:, s:e]
-            blk_new = torch.where(transfer_idx_blk, x0_blk, blk_old)
-            x = torch.cat([x[:, :s], blk_new, x[:, e:]], dim=1)  # static concatenation
-
-            nfe += 1
-
-    return x, nfe
-
+    proposed_tokens = torch.where(mask_index, proposed_tokens, x)
+    neg_inf = torch.full_like(token_confidence, torch.finfo(token_confidence.dtype).min)
+    confidence = torch.where(mask_index, token_confidence, neg_inf)
+    return proposed_tokens, confidence
 
 
 def get_transfer_index(
     logits: torch.Tensor,
     temperature: float,
     remasking: str,
-    mask_index: torch.Tensor,   # (B, L) bool
-    x: torch.Tensor,            # (B, L) long
-    num_transfer_tokens,        # (B,) or (B,1) long tensor, or None when threshold is used
-    threshold: float = None,
-):
-    """
-    Returns:
-        x0: (B, L) long — proposed tokens
-        transfer_index: (B, L) bool — which positions to update this step
-    """
-    # 1) Sample proposal x0
-    # Gumbel-noise for exploration; if temperature==0, add_gumbel_noise should no-op
-    logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
-    x0 = torch.argmax(logits_with_noise, dim=-1)  # (B, L), long
+    mask_index: torch.Tensor,
+    x: torch.Tensor,
+    num_transfer_tokens: Optional[torch.Tensor],
+    threshold: Optional[float] = None,
+    suppressed_sample_token_ids: Optional[Sequence[int]] = None,
+    suppressed_confidence_token_ids: Optional[Sequence[int]] = None,
+    *,
+    eos_token_id: Optional[int] = None,
+    logits_eos_inf: bool = False,
+    confidence_eos_eot_inf: bool = False,
+    gumbel_chunk_size: Optional[int] = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return proposed tokens and the positions to transfer this step."""
+    if mask_index.shape != x.shape or logits.shape[:2] != x.shape:
+        raise ValueError(
+            "Expected logits.shape[:2], mask_index.shape, and x.shape to match; "
+            f"got logits={tuple(logits.shape)}, mask_index={tuple(mask_index.shape)}, x={tuple(x.shape)}"
+        )
 
-    # 2) Confidence for chosen tokens (or random)
-    if remasking == "low_confidence":
-        # Use higher precision for softmax stability
-        p = F.softmax(logits.to(torch.float64), dim=-1)
-        x0_p = torch.gather(p, dim=-1, index=x0.unsqueeze(-1)).squeeze(-1)  # (B, L), float64
-    elif remasking == "random":
-        x0_p = torch.rand(x0.shape, device=x0.device, dtype=torch.float64)  # (B, L)
-    else:
-        raise NotImplementedError(remasking)
+    sample_ids, confidence_ids = _resolve_suppressed_token_ids(
+        suppressed_sample_token_ids=suppressed_sample_token_ids,
+        suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+        eos_token_id=eos_token_id,
+        logits_eos_inf=logits_eos_inf,
+        confidence_eos_eot_inf=confidence_eos_eot_inf,
+    )
 
-    # Only modify masked spots; keep others as original x and set their confidence to -inf
-    x0 = torch.where(mask_index, x0, x)
+    proposed_tokens, confidence = _propose_tokens_and_confidence(
+        logits=logits,
+        temperature=temperature,
+        remasking=remasking,
+        mask_index=mask_index,
+        x=x,
+        suppressed_sample_token_ids=sample_ids,
+        suppressed_confidence_token_ids=confidence_ids,
+        gumbel_chunk_size=gumbel_chunk_size,
+        gumbel_dtype=gumbel_dtype,
+    )
 
-    neg_inf = torch.tensor(torch.finfo(x0_p.dtype).min, device=x0_p.device, dtype=x0_p.dtype)
-    confidence = torch.where(mask_index, x0_p, neg_inf)  # (B, L)
-
-    # 3) Pick positions to transfer (vectorized)
     if threshold is not None:
-        # Transfer all masked positions whose confidence >= threshold
-        # (No top-k; purely threshold-based)
         transfer_index = mask_index & (confidence >= threshold)
+        row_has_mask = mask_index.any(dim=1)
+        if row_has_mask.any():
+            best_indices = torch.argmax(confidence, dim=1, keepdim=True)
+            forced_transfer = torch.zeros_like(transfer_index).scatter_(1, best_indices, True)
+            transfer_index |= forced_transfer & row_has_mask.unsqueeze(1)
+        return proposed_tokens, transfer_index & mask_index
 
-        # at least one token is transferred "always unmask max c^i"
-        max_conf_indices = torch.argmax(confidence, dim=1, keepdim=True) # (B, 1)
-        force_mask = torch.zeros_like(transfer_index).scatter_(1, max_conf_indices, True)
-
-        # (Above Threshold) OR (Is Max Confidence)
-        transfer_index = transfer_index | force_mask
-
-        # Safety: do not unmask something that was not masked (consider fully unmasked rows)
-        transfer_index = transfer_index & mask_index
-
-        return x0, transfer_index
-
-    # Else: per-row top-k with varying k (num_transfer_tokens), fully batched
     if num_transfer_tokens is None:
-        raise ValueError("num_transfer_tokens must be a tensor when threshold is None.")
+        raise ValueError("num_transfer_tokens must be provided when threshold is None")
 
-    # Ensure shape (B,) long
-    if num_transfer_tokens.dim() == 2 and num_transfer_tokens.size(1) == 1:
+    if num_transfer_tokens.ndim == 2 and num_transfer_tokens.shape[1] == 1:
         num_transfer_tokens = num_transfer_tokens.squeeze(1)
-    num_transfer_tokens = num_transfer_tokens.to(dtype=torch.long, device=confidence.device)
-    num_transfer_tokens = torch.clamp(num_transfer_tokens, min=0)
+    if num_transfer_tokens.ndim != 1 or num_transfer_tokens.shape[0] != x.shape[0]:
+        raise ValueError(
+            f"Expected num_transfer_tokens to have shape (B,), got {tuple(num_transfer_tokens.shape)}"
+        )
 
-    # Sort confidences descending (masked positions are valid; others are -inf)
-    # idx: (B, L) gives positions in original sequence sorted by confidence
-    values, idx = torch.sort(confidence, dim=1, descending=True)
+    mask_count = mask_index.sum(dim=1, dtype=torch.long)
+    quota = num_transfer_tokens.to(device=x.device, dtype=torch.long).clamp(min=0)
+    quota = torch.minimum(quota, mask_count)
+    max_k = int(quota.max().item())
 
-    B, L = confidence.shape
-    # Build a mask that is True for the first k[b] columns in each row (sorted order)
-    cols = torch.arange(L, device=confidence.device).unsqueeze(0).expand(B, L)   # (B, L)
-    k_expanded = num_transfer_tokens.unsqueeze(1).expand(B, L)                   # (B, L)
-    select_sorted = cols < k_expanded                                            # (B, L) bool
+    transfer_index = torch.zeros_like(mask_index)
+    if max_k == 0:
+        return proposed_tokens, transfer_index
 
-    # Scatter the sorted True/False back to original column order
-    # Use integer scatter then cast to bool (scatter_ on bool can be finicky across versions)
-    transfer_int = torch.zeros(B, L, device=confidence.device, dtype=torch.int8) # (B, L)
-    transfer_int = transfer_int.scatter(1, idx, select_sorted.to(torch.int8))
-    transfer_index = transfer_int.bool() & mask_index  # ensure we never select unmasked
+    topk_indices = torch.topk(confidence, k=max_k, dim=1, largest=True, sorted=True).indices
+    select = torch.arange(max_k, device=x.device).unsqueeze(0) < quota.unsqueeze(1)
+    transfer_index.scatter_(1, topk_indices, select)
+    return proposed_tokens, transfer_index & mask_index
 
-    return x0, transfer_index
 
-def get_transfer_index_dynamic(logits, temperature, remasking, mask_index, x, num_transfer_tokens, factor=1):
-    logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
-    x0 = torch.argmax(logits_with_noise, dim=-1) # b, l
-    if remasking == 'low_confidence':
-        p = F.softmax(logits.to(torch.float64), dim=-1)
-        x0_p = torch.squeeze(
-            torch.gather(p, dim=-1, index=torch.unsqueeze(x0, -1)), -1) # b, l
-    elif remasking == 'random':
-        x0_p = torch.rand((x0.shape[0], x0.shape[1]), device=x0.device)
-    else:
-        raise NotImplementedError(remasking)
-    
-    x0 = torch.where(mask_index, x0, x)
-    confidence = torch.where(mask_index, x0_p, -np.inf)
+def get_transfer_index_dynamic(
+    logits: torch.Tensor,
+    temperature: float,
+    remasking: str,
+    mask_index: torch.Tensor,
+    x: torch.Tensor,
+    num_transfer_tokens: Optional[torch.Tensor],
+    factor: float = 1.0,
+    suppressed_sample_token_ids: Optional[Sequence[int]] = None,
+    suppressed_confidence_token_ids: Optional[Sequence[int]] = None,
+    *,
+    eos_token_id: Optional[int] = None,
+    logits_eos_inf: bool = False,
+    confidence_eos_eot_inf: bool = False,
+    gumbel_chunk_size: Optional[int] = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Dynamic quota selection from the public LLaDA-style confidence schedule."""
+    del num_transfer_tokens
 
-    transfer_index = torch.zeros_like(x0, dtype=torch.bool, device=x0.device)
-    num_transfer_tokens = mask_index.sum(dim=1, keepdim=True)
-    
-    for j in range(confidence.shape[0]):
-        num_tokens = int(num_transfer_tokens[j].item())
-        if num_tokens == 0:
+    if factor <= 0:
+        raise ValueError(f"factor must be positive, got {factor}")
+
+    sample_ids, confidence_ids = _resolve_suppressed_token_ids(
+        suppressed_sample_token_ids=suppressed_sample_token_ids,
+        suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+        eos_token_id=eos_token_id,
+        logits_eos_inf=logits_eos_inf,
+        confidence_eos_eot_inf=confidence_eos_eot_inf,
+    )
+
+    proposed_tokens, confidence = _propose_tokens_and_confidence(
+        logits=logits,
+        temperature=temperature,
+        remasking=remasking,
+        mask_index=mask_index,
+        x=x,
+        suppressed_sample_token_ids=sample_ids,
+        suppressed_confidence_token_ids=confidence_ids,
+        gumbel_chunk_size=gumbel_chunk_size,
+        gumbel_dtype=gumbel_dtype,
+    )
+
+    transfer_index = torch.zeros_like(mask_index)
+    for row_idx in range(mask_index.shape[0]):
+        row_mask = mask_index[row_idx]
+        num_masked = int(row_mask.sum().item())
+        if num_masked == 0:
             continue
-        
-        ns=list(range(1,num_transfer_tokens[j]+1))
-        es=[factor/(n+1) for n in ns]
-        threshs=[1-e for e in es]
 
-        # at least one token is transferred
-        threshs[0]=-1
-        sorted_confidence=torch.sort(confidence[j][mask_index[j]],dim=-1,descending=True)[0]
-        assert len(sorted_confidence)==len(threshs)
-        for top_i in range(len(threshs)):
-            if sorted_confidence[top_i]<threshs[top_i]:
-                break
+        row_confidence = torch.sort(confidence[row_idx][row_mask], descending=True).values
+        ranks = torch.arange(1, num_masked + 1, device=confidence.device, dtype=row_confidence.dtype)
+        thresholds = 1.0 - (factor / (ranks + 1.0))
+        thresholds[0] = torch.finfo(row_confidence.dtype).min
+        valid = row_confidence >= thresholds
+        transfer_count = int(valid.sum().item())
+        transfer_count = max(1, min(transfer_count, num_masked))
 
-        if top_i == 0 or top_i == len(threshs)-1:
-            top_i+=1
+        selected = torch.topk(confidence[row_idx], k=transfer_count, largest=True, sorted=True).indices
+        transfer_index[row_idx, selected] = True
 
-        _, select_index = torch.topk(confidence[j], k=top_i)
-        transfer_index[j, select_index] = True
+    return proposed_tokens, transfer_index & mask_index
 
-    return x0, transfer_index
 
-def main():
-    device = 'cuda'
+def _apply_updates_(x: torch.Tensor, updates: torch.Tensor, transfer_index: torch.Tensor) -> None:
+    x.copy_(torch.where(transfer_index, updates, x))
 
-    # model = LLaDAModelLM.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
-    # tokenizer = AutoTokenizer.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True)
 
-    model = LLaDAModelLM.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
-    tokenizer = AutoTokenizer.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True)
-    prompt = "Lily can run 12 kilometers per hour for 4 hours. After that, she runs 6 kilometers per hour. How many kilometers can she run in 8 hours?"
+def _truncate_past_key_values(
+    past_key_values,
+    prefix_length: int,
+):
+    return tuple(
+        tuple(cache[:, :, :prefix_length, :] for cache in layer_past)
+        for layer_past in past_key_values
+    )
 
-    # Add special tokens for the Instruct model. The Base model does not require the following two lines.
-    m = [{"role": "user", "content": prompt}, ]
-    prompt = tokenizer.apply_chat_template(m, add_generation_prompt=True, tokenize=False)
 
-    input_ids = tokenizer(prompt)['input_ids']
-    input_ids = torch.tensor(input_ids).to(device).unsqueeze(0)
-    with torch.inference_mode():
-        nvtx.range_push("INFER")
+def _model_supports_replace_position(model) -> bool:
+    try:
+        signature = inspect.signature(model.forward)
+    except (TypeError, ValueError):
+        return False
+    return "replace_position" in signature.parameters
 
-        out = generate_with_dual_cache(model, input_ids, steps=128, gen_length=128, block_length=32, temperature=0., remasking='low_confidence')
-    
-        torch.cuda.synchronize()
-        nvtx.range_pop()
-    print(tokenizer.batch_decode(out[0][:, input_ids.shape[1]:], skip_special_tokens=True)[0])
 
-if __name__ == '__main__':
-    main()
+def generate(
+    model,
+    prompt,
+    steps: int = 128,
+    gen_length: int = 128,
+    block_length: int = 128,
+    temperature: float = 0.0,
+    remasking: str = "low_confidence",
+    mask_id: int = 126336,
+    threshold: Optional[float] = None,
+    factor: Optional[float] = None,
+    suppressed_sample_token_ids: Optional[Sequence[int]] = None,
+    suppressed_confidence_token_ids: Optional[Sequence[int]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    *,
+    eos_token_id: Optional[int] = None,
+    logits_eos_inf: bool = False,
+    confidence_eos_eot_inf: bool = False,
+    gumbel_chunk_size: Optional[int] = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
+):
+    device = model.device
+    x = torch.full(
+        (prompt.shape[0], prompt.shape[1] + gen_length),
+        mask_id,
+        dtype=torch.long,
+        device=device,
+    )
+    x[:, : prompt.shape[1]] = prompt.to(device)
+    generation_attention_mask = _prepare_generation_attention_mask(prompt, attention_mask, gen_length)
+
+    if gen_length % block_length != 0:
+        raise ValueError(f"gen_length={gen_length} must be divisible by block_length={block_length}")
+    num_blocks = gen_length // block_length
+
+    if steps % num_blocks != 0:
+        raise ValueError(f"steps={steps} must be divisible by num_blocks={num_blocks}")
+    steps_per_block = steps // num_blocks
+
+    nfe = 0
+    prompt_length = prompt.shape[1]
+    for num_block in range(num_blocks):
+        start = prompt_length + num_block * block_length
+        end = start + block_length
+        block_mask_index = x[:, start:end] == mask_id
+        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps_per_block)
+
+        step_idx = 0
+        while (x[:, start:end] == mask_id).any():
+            mask_index = x == mask_id
+            mask_index[:, end:] = False
+            logits = model(x, attention_mask=generation_attention_mask).logits
+            nfe += 1
+
+            if factor is None:
+                proposed_tokens, transfer_index = get_transfer_index(
+                    logits=logits,
+                    temperature=temperature,
+                    remasking=remasking,
+                    mask_index=mask_index,
+                    x=x,
+                    num_transfer_tokens=num_transfer_tokens[:, step_idx] if threshold is None else None,
+                    threshold=threshold,
+                    suppressed_sample_token_ids=suppressed_sample_token_ids,
+                    suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                    eos_token_id=eos_token_id,
+                    logits_eos_inf=logits_eos_inf,
+                    confidence_eos_eot_inf=confidence_eos_eot_inf,
+                    gumbel_chunk_size=gumbel_chunk_size,
+                    gumbel_dtype=gumbel_dtype,
+                )
+            else:
+                proposed_tokens, transfer_index = get_transfer_index_dynamic(
+                    logits=logits,
+                    temperature=temperature,
+                    remasking=remasking,
+                    mask_index=mask_index,
+                    x=x,
+                    num_transfer_tokens=None,
+                    factor=factor,
+                    suppressed_sample_token_ids=suppressed_sample_token_ids,
+                    suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                    eos_token_id=eos_token_id,
+                    logits_eos_inf=logits_eos_inf,
+                    confidence_eos_eot_inf=confidence_eos_eot_inf,
+                    gumbel_chunk_size=gumbel_chunk_size,
+                    gumbel_dtype=gumbel_dtype,
+                )
+
+            _apply_updates_(x, proposed_tokens, transfer_index)
+            step_idx += 1
+
+    return x, nfe
+
+
+def generate_with_prefix_cache(
+    model,
+    prompt,
+    steps: int = 128,
+    gen_length: int = 128,
+    block_length: int = 128,
+    temperature: float = 0.0,
+    remasking: str = "low_confidence",
+    mask_id: int = 126336,
+    threshold: Optional[float] = None,
+    factor: Optional[float] = None,
+    suppressed_sample_token_ids: Optional[Sequence[int]] = None,
+    suppressed_confidence_token_ids: Optional[Sequence[int]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    *,
+    eos_token_id: Optional[int] = None,
+    logits_eos_inf: bool = False,
+    confidence_eos_eot_inf: bool = False,
+    gumbel_chunk_size: Optional[int] = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
+):
+    device = model.device
+    x = torch.full(
+        (prompt.shape[0], prompt.shape[1] + gen_length),
+        mask_id,
+        dtype=torch.long,
+        device=device,
+    )
+    x[:, : prompt.shape[1]] = prompt.to(device)
+    generation_attention_mask = _prepare_generation_attention_mask(prompt, attention_mask, gen_length)
+
+    if gen_length % block_length != 0:
+        raise ValueError(f"gen_length={gen_length} must be divisible by block_length={block_length}")
+    num_blocks = gen_length // block_length
+
+    if steps % num_blocks != 0:
+        raise ValueError(f"steps={steps} must be divisible by num_blocks={num_blocks}")
+    steps_per_block = steps // num_blocks
+
+    nfe = 0
+    prompt_length = prompt.shape[1]
+
+    for num_block in range(num_blocks):
+        start = prompt_length + num_block * block_length
+        end = start + block_length
+
+        block_mask_index = x[:, start:end] == mask_id
+        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps_per_block)
+
+        output = model(x, use_cache=True, attention_mask=generation_attention_mask)
+        past_key_values = _truncate_past_key_values(output.past_key_values, start)
+        nfe += 1
+
+        mask_index = x == mask_id
+        mask_index[:, end:] = False
+        if factor is None:
+            proposed_tokens, transfer_index = get_transfer_index(
+                logits=output.logits,
+                temperature=temperature,
+                remasking=remasking,
+                mask_index=mask_index,
+                x=x,
+                num_transfer_tokens=num_transfer_tokens[:, 0] if threshold is None else None,
+                threshold=threshold,
+                suppressed_sample_token_ids=suppressed_sample_token_ids,
+                suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                eos_token_id=eos_token_id,
+                logits_eos_inf=logits_eos_inf,
+                confidence_eos_eot_inf=confidence_eos_eot_inf,
+                gumbel_chunk_size=gumbel_chunk_size,
+                gumbel_dtype=gumbel_dtype,
+            )
+        else:
+            proposed_tokens, transfer_index = get_transfer_index_dynamic(
+                logits=output.logits,
+                temperature=temperature,
+                remasking=remasking,
+                mask_index=mask_index,
+                x=x,
+                num_transfer_tokens=None,
+                factor=factor,
+                suppressed_sample_token_ids=suppressed_sample_token_ids,
+                suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                eos_token_id=eos_token_id,
+                logits_eos_inf=logits_eos_inf,
+                confidence_eos_eot_inf=confidence_eos_eot_inf,
+                gumbel_chunk_size=gumbel_chunk_size,
+                gumbel_dtype=gumbel_dtype,
+            )
+        _apply_updates_(x, proposed_tokens, transfer_index)
+
+        step_idx = 1
+        while (x[:, start:end] == mask_id).any():
+            suffix = x[:, start:]
+            suffix_mask = suffix == mask_id
+            suffix_mask[:, block_length:] = False
+
+            output = model(
+                suffix,
+                past_key_values=past_key_values,
+                use_cache=True,
+                attention_mask=generation_attention_mask,
+            )
+            nfe += 1
+
+            if factor is None:
+                proposed_tokens, transfer_index = get_transfer_index(
+                    logits=output.logits,
+                    temperature=temperature,
+                    remasking=remasking,
+                    mask_index=suffix_mask,
+                    x=suffix,
+                    num_transfer_tokens=num_transfer_tokens[:, step_idx] if threshold is None else None,
+                    threshold=threshold,
+                    suppressed_sample_token_ids=suppressed_sample_token_ids,
+                    suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                    eos_token_id=eos_token_id,
+                    logits_eos_inf=logits_eos_inf,
+                    confidence_eos_eot_inf=confidence_eos_eot_inf,
+                    gumbel_chunk_size=gumbel_chunk_size,
+                    gumbel_dtype=gumbel_dtype,
+                )
+            else:
+                proposed_tokens, transfer_index = get_transfer_index_dynamic(
+                    logits=output.logits,
+                    temperature=temperature,
+                    remasking=remasking,
+                    mask_index=suffix_mask,
+                    x=suffix,
+                    num_transfer_tokens=None,
+                    factor=factor,
+                    suppressed_sample_token_ids=suppressed_sample_token_ids,
+                    suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                    eos_token_id=eos_token_id,
+                    logits_eos_inf=logits_eos_inf,
+                    confidence_eos_eot_inf=confidence_eos_eot_inf,
+                    gumbel_chunk_size=gumbel_chunk_size,
+                    gumbel_dtype=gumbel_dtype,
+                )
+
+            x[:, start:] = torch.where(transfer_index, proposed_tokens, x[:, start:])
+            step_idx += 1
+
+    return x, nfe
+
+
+def generate_with_dual_cache(
+    model,
+    prompt,
+    steps: int = 128,
+    gen_length: int = 128,
+    block_length: int = 128,
+    temperature: float = 0.0,
+    remasking: str = "low_confidence",
+    mask_id: int = 126336,
+    threshold: Optional[float] = None,
+    factor: Optional[float] = None,
+    suppressed_sample_token_ids: Optional[Sequence[int]] = None,
+    suppressed_confidence_token_ids: Optional[Sequence[int]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    *,
+    eos_token_id: Optional[int] = None,
+    logits_eos_inf: bool = False,
+    confidence_eos_eot_inf: bool = False,
+    gumbel_chunk_size: Optional[int] = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
+):
+    """Custom-fork dual-cache path.
+
+    Public upstream `modeling_llada.py` does not expose `replace_position`, so we
+    only use this path when the loaded model explicitly supports that argument.
+    Otherwise we fall back to the correctness-preserving prefix-cache path.
+    """
+    if not _model_supports_replace_position(model):
+        return generate_with_prefix_cache(
+            model=model,
+            prompt=prompt,
+            steps=steps,
+            gen_length=gen_length,
+            block_length=block_length,
+            temperature=temperature,
+            remasking=remasking,
+            mask_id=mask_id,
+            threshold=threshold,
+            factor=factor,
+            suppressed_sample_token_ids=suppressed_sample_token_ids,
+            suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+            attention_mask=attention_mask,
+            eos_token_id=eos_token_id,
+            logits_eos_inf=logits_eos_inf,
+            confidence_eos_eot_inf=confidence_eos_eot_inf,
+            gumbel_chunk_size=gumbel_chunk_size,
+            gumbel_dtype=gumbel_dtype,
+        )
+
+    device = model.device
+    x = torch.full(
+        (prompt.shape[0], prompt.shape[1] + gen_length),
+        mask_id,
+        dtype=torch.long,
+        device=device,
+    )
+    x[:, : prompt.shape[1]] = prompt.to(device)
+    generation_attention_mask = _prepare_generation_attention_mask(prompt, attention_mask, gen_length)
+
+    if gen_length % block_length != 0:
+        raise ValueError(f"gen_length={gen_length} must be divisible by block_length={block_length}")
+    num_blocks = gen_length // block_length
+
+    if steps % num_blocks != 0:
+        raise ValueError(f"steps={steps} must be divisible by num_blocks={num_blocks}")
+    steps_per_block = steps // num_blocks
+
+    nfe = 0
+    prompt_length = prompt.shape[1]
+
+    for num_block in range(num_blocks):
+        start = prompt_length + num_block * block_length
+        end = start + block_length
+        block_mask_index = x[:, start:end] == mask_id
+        num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps_per_block)
+
+        output = model(x, use_cache=True, attention_mask=generation_attention_mask)
+        past_key_values = output.past_key_values
+        nfe += 1
+
+        mask_index = x == mask_id
+        mask_index[:, end:] = False
+        if factor is None:
+            proposed_tokens, transfer_index = get_transfer_index(
+                logits=output.logits,
+                temperature=temperature,
+                remasking=remasking,
+                mask_index=mask_index,
+                x=x,
+                num_transfer_tokens=num_transfer_tokens[:, 0] if threshold is None else None,
+                threshold=threshold,
+                suppressed_sample_token_ids=suppressed_sample_token_ids,
+                suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                eos_token_id=eos_token_id,
+                logits_eos_inf=logits_eos_inf,
+                confidence_eos_eot_inf=confidence_eos_eot_inf,
+                gumbel_chunk_size=gumbel_chunk_size,
+                gumbel_dtype=gumbel_dtype,
+            )
+        else:
+            proposed_tokens, transfer_index = get_transfer_index_dynamic(
+                logits=output.logits,
+                temperature=temperature,
+                remasking=remasking,
+                mask_index=mask_index,
+                x=x,
+                num_transfer_tokens=None,
+                factor=factor,
+                suppressed_sample_token_ids=suppressed_sample_token_ids,
+                suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                eos_token_id=eos_token_id,
+                logits_eos_inf=logits_eos_inf,
+                confidence_eos_eot_inf=confidence_eos_eot_inf,
+                gumbel_chunk_size=gumbel_chunk_size,
+                gumbel_dtype=gumbel_dtype,
+            )
+        _apply_updates_(x, proposed_tokens, transfer_index)
+
+        replace_position = torch.zeros_like(x, dtype=torch.bool)
+        replace_position[:, start:end] = True
+
+        step_idx = 1
+        while (x[:, start:end] == mask_id).any():
+            output = model(
+                x[:, start:end],
+                past_key_values=past_key_values,
+                use_cache=True,
+                replace_position=replace_position,
+                attention_mask=generation_attention_mask,
+            )
+            past_key_values = output.past_key_values
+            nfe += 1
+
+            block_mask = x[:, start:end] == mask_id
+            if factor is None:
+                proposed_tokens, transfer_index = get_transfer_index(
+                    logits=output.logits,
+                    temperature=temperature,
+                    remasking=remasking,
+                    mask_index=block_mask,
+                    x=x[:, start:end],
+                    num_transfer_tokens=num_transfer_tokens[:, step_idx] if threshold is None else None,
+                    threshold=threshold,
+                    suppressed_sample_token_ids=suppressed_sample_token_ids,
+                    suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                    eos_token_id=eos_token_id,
+                    logits_eos_inf=logits_eos_inf,
+                    confidence_eos_eot_inf=confidence_eos_eot_inf,
+                    gumbel_chunk_size=gumbel_chunk_size,
+                    gumbel_dtype=gumbel_dtype,
+                )
+            else:
+                proposed_tokens, transfer_index = get_transfer_index_dynamic(
+                    logits=output.logits,
+                    temperature=temperature,
+                    remasking=remasking,
+                    mask_index=block_mask,
+                    x=x[:, start:end],
+                    num_transfer_tokens=None,
+                    factor=factor,
+                    suppressed_sample_token_ids=suppressed_sample_token_ids,
+                    suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+                    eos_token_id=eos_token_id,
+                    logits_eos_inf=logits_eos_inf,
+                    confidence_eos_eot_inf=confidence_eos_eot_inf,
+                    gumbel_chunk_size=gumbel_chunk_size,
+                    gumbel_dtype=gumbel_dtype,
+                )
+
+            x[:, start:end] = torch.where(transfer_index, proposed_tokens, x[:, start:end])
+            step_idx += 1
+
+    return x, nfe

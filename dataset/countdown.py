@@ -6,15 +6,19 @@ import numpy as np
 from collections import Counter
 
 
-# Official Dream prompt templates (from eval_planning.py) with an explicit
-# format suffix so both base and instruct models produce compact equations.
-_CD_FORMAT = " Output ONLY comma-separated equations like a+b=c,c-d=e with no explanation."
-
-CD_TEMPLATES = {
-    "cd3": "Given 4 numbers, use +-*/ to operate over the first three numbers to achieve the last number." + _CD_FORMAT,
-    "cd4": "Given 5 numbers, use +-*/ to operate over the first four numbers to achieve the fifth number." + _CD_FORMAT,
-    "cd5": "Given 6 numbers, use +-*/ to operate over the first five numbers to achieve the last number." + _CD_FORMAT,
+# Official Dream task descriptions, with a stricter instruct-mode suffix to
+# discourage self-correction chatter on AR chat checkpoints.
+_CD_TASKS = {
+    "cd3": "Given 4 numbers, use +-*/ to operate over the first three numbers to achieve the last number.",
+    "cd4": "Given 5 numbers, use +-*/ to operate over the first four numbers to achieve the fifth number.",
+    "cd5": "Given 6 numbers, use +-*/ to operate over the first five numbers to achieve the last number.",
 }
+_CD_BASE_FORMAT = " Output ONLY comma-separated equations like a+b=c,c-d=e with no explanation."
+_CD_INSTRUCT_FORMAT = (
+    " Output ONLY {num_equations} comma-separated equations like a+b=c,c-d=e."
+    " No words, no explanation, no retries, no comments."
+    " Stop immediately after the final equation reaches the target."
+)
 
 CD_FILES = {
     "cd3": "cd3_test.jsonl",
@@ -36,15 +40,91 @@ CD_FILES = {
 #                          performance can reflect prompt-format mismatch
 #                          rather than capability loss.
 #   instruct_templated   — instruct checkpoint + model-native chat template
-#                          (multi-turn few-shot). Shows combined effect of
-#                          instruction tuning + proper prompt formatting.
+#                          with each few-shot example serialized as its own
+#                          user/assistant turn.
+#   instruct_single_turn — instruct checkpoint + model-native chat template
+#                          with the entire flat prompt packed into one user
+#                          message. This is often closer to standard chat-eval
+#                          serialization than synthetic multi-turn few-shot.
 #
 # Comparing (instruct_flat vs base_native) reveals how much flat-text
 # capability the instruct weights retained.
 # Comparing (instruct_templated vs instruct_flat) reveals how much the
 # chat template helps (or is necessary) for the instruct checkpoint.
 # ---------------------------------------------------------------------------
-VALID_PROMPT_MODES = ("base_native", "instruct_flat", "instruct_templated")
+VALID_PROMPT_MODES = (
+    "base_native",
+    "instruct_flat",
+    "instruct_templated",
+    "instruct_single_turn",
+)
+
+_COUNTDOWN_EOS_MARKERS = (
+    "<|endoftext|>",
+    "<|eot_id|>",
+    "<|im_end|>",
+    "</s>",
+)
+_COUNTDOWN_BINARY_EQ_RE = re.compile(
+    r"^\s*([+-]?\d+(?:\.\d+)?)\s*([+\-*/])\s*([+-]?\d+(?:\.\d+)?)\s*=\s*([+-]?\d+(?:\.\d+)?)\s*$"
+)
+
+
+def _required_equation_count(difficulty):
+    return {"cd3": 2, "cd4": 3, "cd5": 4}[difficulty]
+
+
+def _countdown_instruction(difficulty, strict=False):
+    task = _CD_TASKS[difficulty]
+    if strict:
+        return task + _CD_INSTRUCT_FORMAT.format(
+            num_equations=_required_equation_count(difficulty)
+        )
+    return task + _CD_BASE_FORMAT
+
+
+def _normalize_countdown_prediction(pred):
+    """Keep the first logical countdown line and strip common chat/eos artifacts."""
+    if pred is None:
+        return ""
+
+    cleaned = (
+        str(pred)
+        .replace(r"\div", "/")
+        .replace(r"\times", "*")
+        .replace(r"\cdot", "*")
+        .replace("×", "*")
+        .replace("÷", "/")
+    )
+    cleaned = cleaned.splitlines()[0].strip()
+
+    for marker in _COUNTDOWN_EOS_MARKERS:
+        if marker in cleaned:
+            cleaned = cleaned.split(marker, 1)[0].strip()
+
+    return cleaned
+
+
+def _extract_leading_subequations(pred):
+    """Recover the leading comma-separated equation chain before chatter starts."""
+    normalized = _normalize_countdown_prediction(pred)
+    if not normalized:
+        return ""
+
+    subequations = []
+    for raw_subeq in normalized.split(","):
+        subeq = raw_subeq.strip()
+        if not subeq:
+            break
+
+        match = _COUNTDOWN_BINARY_EQ_RE.fullmatch(subeq)
+        if not match:
+            break
+
+        left_a, op, left_b, right = match.groups()
+        subequations.append(f"{left_a}{op}{left_b}={right}")
+
+    return ",".join(subequations)
 
 
 def cd_score_single(input_str, pred):
@@ -58,12 +138,17 @@ def cd_score_single(input_str, pred):
     Returns True if the prediction is correct.
     """
     def check_eq(left_str, right_str):
-        m = re.match(r'(\d+)([+\-*/])(\d+)', left_str)
-        if m:
-            try:
-                return eval(left_str) == float(right_str)
-            except Exception:
-                return False
+        left_match = _COUNTDOWN_BINARY_EQ_RE.fullmatch(f"{left_str}={right_str}")
+        if not left_match:
+            return False
+
+        try:
+            return eval(left_str, {"__builtins__": None}, {}) == float(right_str)
+        except Exception:
+            return False
+
+    pred = _extract_leading_subequations(pred)
+    if not pred:
         return False
 
     subequations = pred.split(',')
@@ -107,6 +192,7 @@ class CTDDataset(torch.utils.data.Dataset):
       - "base_native"        : flat completion prompt (for base checkpoints)
       - "instruct_flat"      : same flat string, no chat template (ablation)
       - "instruct_templated" : multi-turn chat template (for instruct models)
+      - "instruct_single_turn": one user chat turn containing the full prompt
 
     If prompt_mode is not provided, it is inferred from is_base_model
     for backward compatibility.
@@ -188,7 +274,8 @@ class CTDDataset(torch.utils.data.Dataset):
 
         Used by both base_native and instruct_flat modes.
         """
-        template = CD_TEMPLATES[self.difficulty] + "\n\n"
+        strict = self.prompt_mode != "base_native"
+        template = _countdown_instruction(self.difficulty, strict=strict) + "\n\n"
         if self.num_examples > 0:
             examples = "\n\n".join(
                 f"Input: {d['input']}\nOutput: {d['output']}"
@@ -220,7 +307,10 @@ class CTDDataset(torch.utils.data.Dataset):
           user_N  = "Input: {test_numbers}"   (final turn, model generates)
         """
         messages = [
-            {"role": "system", "content": CD_TEMPLATES[self.difficulty]},
+            {
+                "role": "system",
+                "content": _countdown_instruction(self.difficulty, strict=True),
+            },
         ]
         for d in self.few_shot_data:
             messages.append({"role": "user", "content": f"Input: {d['input']}"})
@@ -230,10 +320,25 @@ class CTDDataset(torch.utils.data.Dataset):
             messages, add_generation_prompt=True, tokenize=False
         )
 
+    def create_single_turn_instruct_prompt(self, input_str):
+        """Single-turn chat prompt with the full flat prompt in one user turn.
+
+        This avoids fabricating a multi-turn conversation out of the few-shot
+        examples and is usually closer to how chat checkpoints are evaluated in
+        standard chat-generation benchmarks.
+        """
+        prompt = self.create_flat_prompt(input_str).rstrip()
+        messages = [{"role": "user", "content": prompt}]
+        return self.tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False
+        )
+
     def create_prompt(self, input_str):
         """Dispatch to the appropriate prompt builder based on prompt_mode."""
         if self.prompt_mode in ("base_native", "instruct_flat"):
             return self.create_flat_prompt(input_str)
+        if self.prompt_mode == "instruct_single_turn":
+            return self.create_single_turn_instruct_prompt(input_str)
         return self.create_templated_instruct_prompt(input_str)
 
     # ------------------------------------------------------------------

@@ -330,6 +330,13 @@ def check_sudoku_solution(pred: Optional[str], puzzle: str, solution: str) -> bo
 # Countdown helpers
 # -----------------------------
 
+_COUNTDOWN_EOS_MARKERS = (
+    "<|endoftext|>",
+    "<|eot_id|>",
+    "<|im_end|>",
+    "</s>",
+)
+
 
 def extract_countdown_equation(text: str) -> Optional[str]:
     """
@@ -343,14 +350,18 @@ def extract_countdown_equation(text: str) -> Optional[str]:
     ans = _extract_tag_content(text, "answer")
     candidate = ans if ans is not None else text
 
+    for marker in _COUNTDOWN_EOS_MARKERS:
+        if marker in candidate:
+            candidate = candidate.split(marker, 1)[0]
+
     # Try boxed
     m = re.search(r"\\boxed\s*\{([^}]*)\}", candidate)
     if m:
         expr = m.group(1).strip()
     else:
-        # Fallback: last non-empty line
+        # Fallback: first non-empty line, which is typically the intended answer.
         lines = [ln.strip() for ln in candidate.splitlines() if ln.strip()]
-        expr = lines[-1] if lines else ""
+        expr = lines[0] if lines else ""
 
     expr = (
         expr.replace(r"\div", "/")

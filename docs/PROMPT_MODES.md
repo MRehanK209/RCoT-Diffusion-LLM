@@ -17,7 +17,8 @@ To disentangle these effects, we implement a 3-way prompt comparison.
 |------|-----------|---------------|---------|
 | `base_native` | Base | Flat completion string | Baseline: what can the base weights do? |
 | `instruct_flat` | Instruct | Same flat string as base | Ablation: how do instruct weights perform with base-style prompts? |
-| `instruct_templated` | Instruct | Model-native chat template (multi-turn) | Full instruct: weights + proper formatting together. |
+| `instruct_templated` | Instruct | Model-native chat template (multi-turn) | Recommended reporting mode for instruct checkpoints. |
+| `instruct_single_turn` | Instruct | Model-native chat template (single user turn) | Diagnostic parity check, not a primary benchmark mode. |
 
 ### What Each Comparison Reveals
 
@@ -38,7 +39,7 @@ dataset = CTD4Dataset(
     tokenizer,
     num_examples=8,
     subsample=992,
-    prompt_mode="instruct_flat",  # or "base_native" / "instruct_templated"
+    prompt_mode="instruct_flat",  # or "base_native" / "instruct_templated" / "instruct_single_turn"
 )
 ```
 
@@ -90,6 +91,21 @@ For **Countdown** specifically, the structure is more compact:
 [user]   Input: {test_numbers}
 ```
 
+**`instruct_single_turn`** — Single-turn chat template:
+```
+[user]   Given 5 numbers, use +-*/ to operate over the first four numbers
+         to achieve the fifth number. Output ONLY comma-separated equations
+         like a+b=c,c-d=e with no explanation.
+
+         Input: 86,28,13,31,96
+         Output: 86+28=114,31-13=18,114-18=96
+
+         ...
+
+         Input: {test_numbers}
+         Output:
+```
+
 #### Trip Planning
 
 Trip planning uses a domain-specific `TASK:` format that doesn't decompose cleanly into user/assistant turns. All three modes keep the same prompt content; only the wrapping differs:
@@ -103,12 +119,16 @@ All four evaluation functions (`evaluate_fast_dllm`, `evaluate_dllm`, `evaluate_
 
 ### Result Filenames
 
-The filename convention distinguishes `instruct_flat` results from standard runs:
+The filename convention now makes the resolved prompt mode explicit for every run:
 
-- Standard (base_native or instruct_templated): `...generations_fast_dllm.json`
-- instruct_flat: `...generations_flat_fast_dllm.json`
+- `base_native`: `...generations_base_native_fast_dllm.json`
+- `instruct_templated`: `...generations_instruct_templated_fast_dllm.json`
+- `instruct_flat`: `...generations_instruct_flat_fast_dllm.json`
+- `instruct_single_turn`: `...generations_instruct_single_turn_fast_dllm.json`
 
-The `_flat` tag is inserted before the engine suffix.
+The same convention is used for `fast_dllm`, `dllm`, `vllm`, and `ar`.
+This means newly launched runs will not reuse older result files that were saved
+under the previous implicit naming scheme.
 
 ## CLI Usage
 
@@ -121,6 +141,15 @@ The `_flat` tag is inserted before the engine suffix.
 
 # Instruct-flat ablation only
 ./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_flat
+
+# Single-turn chat parity check
+./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_single_turn
+
+# Run multiple instruct prompt modes in one command
+./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_templated --prompt_mode instruct_flat
+
+# Comma-separated form also works
+./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_templated,instruct_flat
 ```
 
 #### Full 3-way comparison
@@ -135,52 +164,45 @@ The comparison table generated at the end labels instruct_flat entries as `Model
 
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
-| `--prompt_mode` | `auto`, `instruct_flat` | `auto` | Override prompt format for instruct models |
+| `--prompt_mode` | `auto`, `instruct_templated`, `instruct_flat`, `instruct_single_turn` | `auto` | Override prompt format for instruct models; may be repeated or passed as a comma-separated list |
 | `-v, --variant` | `base`, `instruct`, `all`, `all3` | `all` | `all3` = base + instruct + instruct_flat |
 
-## Expected Effects on Countdown CD4 Accuracy
+## What To Look For On Countdown CD4
 
-### Baseline Results (from previous runs)
+For countdown, the three prompt modes are best understood as:
 
-| Model | Base (native) pass@1 | Instruct (old single-turn) pass@1 |
-|-------|---------------------|------------------------------------|
-| Dream 7B | ~16.0% | ~19.2% |
-| LLaDA 8B | ~13.2% | ~0.95% |
-| Qwen 2.5 7B | ~6.2% | ~1.6% |
-| LLaMA 3.1 8B | ~3.7% | ~11.3% |
+- `instruct_templated` vs `instruct_single_turn`
+- `instruct_single_turn` vs `instruct_flat`
 
-### Predicted Effect of Multi-Turn Template (instruct_templated)
+That separates three different effects:
 
-The previous instruct runs used a single-turn prompt where the system prompt and all few-shot examples were concatenated into one user message. The new `instruct_templated` mode structures this as proper multi-turn conversation.
+1. Whether the checkpoint needs chat wrapping at all.
+2. Whether it benefits from a synthetic multi-turn few-shot conversation.
+3. Whether the flat Dream-style prompt is simply a distribution mismatch.
 
-**Expected improvements:**
+Recent local `countdown_cd4` runs suggest EOS handling is not the main limiter for LLaDA-Instruct, so prompt serialization and task/checkpoint mismatch matter more than EOS suppression here.
 
-1. **LLaDA-Instruct** — Largest expected improvement (from ~1% to potentially 5-15%). LLaDA-Instruct was trained on multi-turn conversations; the old flat-style prompt was severely mismatched with its training distribution. The multi-turn format with system/user/assistant turns should dramatically improve format compliance and reduce truncated/verbose outputs.
+## Recommended Reporting Mode
 
-2. **Dream-Instruct** — Moderate improvement expected (19% → 20-25%). Dream-Instruct already performed reasonably, suggesting some robustness to prompt format. Multi-turn should still help by making the few-shot examples more clearly delineated.
+For the main countdown benchmark, this repo now treats `instruct_templated` as the
+default instruct setting to keep and report.
 
-3. **Qwen-Instruct** — Significant improvement expected (1.6% → 5-12%). Similar to LLaDA, Qwen's instruct training heavily emphasizes chat-format inputs. The old prompt format led to verbose explanations instead of compact equations.
+Why:
 
-4. **LLaMA-Instruct** — Small improvement expected (11% → 12-16%). Already performed well with the old format, suggesting good prompt robustness.
+1. It is the checkpoint-native evaluation mode for instruct models in this repo.
+2. It performed best or tied-best for most instruct checkpoints we tested on countdown:
+   - LLaDA-Instruct: `instruct_templated` > `instruct_flat` > `instruct_single_turn`
+   - Qwen-Instruct: `instruct_templated` > `instruct_flat`
+   - Llama-Instruct: `instruct_templated` ~= `instruct_flat`, with a slight edge to templated
+3. `instruct_flat` is still valuable academically, but as an ablation that isolates
+   the effect of instruction tuning under an identical flat prompt.
+4. `instruct_single_turn` did not help on countdown and is now best treated as a
+   diagnostic rather than a primary benchmark mode.
 
-### Predicted Effect of instruct_flat (Ablation)
-
-Running instruct models with flat base-style prompts should generally show:
-
-- **Degradation for LLaDA/Qwen-Instruct** — These models were heavily fine-tuned on chat data, so flat prompts are out-of-distribution. Expect performance close to or below the (already low) old instruct scores.
-- **Minimal change for Dream/LLaMA-Instruct** — These may retain more flat-prompt capability, showing scores closer to their base counterparts.
-
-### pass@k Scaling Predictions
-
-For the countdown task, the 3-way comparison at higher k values should reveal:
-
-| k | base_native | instruct_flat | instruct_templated |
-|---|------------|---------------|-------------------|
-| 1 | Moderate | Low (format mismatch) | Highest |
-| 16 | Higher | Still limited | Much higher |
-| 128 | Plateauing | May catch up slightly | Highest ceiling |
-
-The key insight: **instruct_templated should show the steepest pass@k curve** because the model generates more format-compliant outputs, meaning more of the k samples produce parseable (and potentially correct) answers. Even if the underlying reasoning capability is similar, better format compliance yields higher effective coverage.
+Dream-Instruct is the notable exception: on local countdown runs, `instruct_flat`
+outperformed `instruct_templated`. That is useful analysis, but for a single
+cross-model instruct benchmark we prefer one consistent rule, and `instruct_templated`
+is the cleanest checkpoint-native choice.
 
 ## Methodological Notes
 
@@ -192,4 +214,4 @@ The key insight: **instruct_templated should show the steepest pass@k curve** be
 
 4. **Apples-to-apples** — The `instruct_flat` mode uses the *exact same string* as `base_native`. This ensures any performance difference is attributable solely to the model weights, not the prompt format.
 
-5. **LLaDA-Instruct EOS mitigation** — LLaDA-Instruct suffers from EOS overflow due to SFT padding with `<|endoftext|>`. The script auto-applies semi-autoregressive generation (smaller `block_length`) and EOS suppression (`logits_eos_inf`, `confidence_eos_eot_inf`) following the official LLaDA EVAL.md guidance. See `docs/EXPERIMENTS.md` for details.
+5. **Why LLaDA-Instruct is still low on countdown** — The remaining gap is not primarily an EOS problem in local countdown runs. With `block_length=32`, outputs are usually non-empty and equation-shaped, but many are arithmetically invalid. That points more toward prompt/task mismatch and symbolic-consistency limits than early-EOS collapse.

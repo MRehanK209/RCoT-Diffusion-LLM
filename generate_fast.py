@@ -60,6 +60,7 @@ def _dream_generate(
 def _llada_generate(
     self,
     input_ids: torch.Tensor,
+    attention_mask: torch.Tensor | None = None,
     max_new_tokens: int = 256,
     steps: int = 8,
     block_length: int = 32,
@@ -70,6 +71,10 @@ def _llada_generate(
     factor=None,  # Parallel decoding factor (alternative to threshold)
     use_cache: bool = True,
     dual_cache: bool = True,
+    suppressed_sample_token_ids=None,
+    suppressed_confidence_token_ids=None,
+    gumbel_chunk_size: int | None = 4096,
+    gumbel_dtype: torch.dtype = torch.float64,
     **kwargs,
 ):
     """
@@ -81,6 +86,12 @@ def _llada_generate(
         The full sequence including prompt is returned, just like generate_with_dual_cache
     """
     gen_length = max_new_tokens
+    generation_kw = dict(
+        suppressed_sample_token_ids=suppressed_sample_token_ids,
+        suppressed_confidence_token_ids=suppressed_confidence_token_ids,
+        gumbel_chunk_size=gumbel_chunk_size,
+        gumbel_dtype=gumbel_dtype,
+    )
 
     if use_cache:
         if dual_cache:
@@ -95,6 +106,8 @@ def _llada_generate(
                 mask_id=mask_id,
                 threshold=threshold,
                 factor=factor,
+                attention_mask=attention_mask,
+                **generation_kw,
             )
         else:
             out, _nfe = generate_with_prefix_cache(
@@ -108,6 +121,8 @@ def _llada_generate(
                 mask_id=mask_id,
                 threshold=threshold,
                 factor=factor,
+                attention_mask=attention_mask,
+                **generation_kw,
             )
     else:
         out, _nfe = generate(
@@ -121,6 +136,8 @@ def _llada_generate(
             mask_id=mask_id,
             threshold=threshold,
             factor=factor,
+            attention_mask=attention_mask,
+            **generation_kw,
         )
 
     # Return just the tensor (full sequence), matching the official implementation

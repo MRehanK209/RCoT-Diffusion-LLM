@@ -247,21 +247,23 @@ all parameters:
 
 ```
 # Diffusion (fast-dLLM):
-{model}_{dataset}_{gen_length}_{steps}_{block}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_fast_dllm.json
+{model}_{dataset}_{gen_length}_{steps}_{block}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_{prompt_mode}_fast_dllm.json
 
 # Diffusion (slow dLLM):
-{model}_{dataset}_{gen_length}_{steps}_{block}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_dllm.json
+{model}_{dataset}_{gen_length}_{steps}_{block}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_{prompt_mode}_dllm.json
 
 # AR (vLLM):
-{model}_{dataset}_{gen_length}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_vllm.json
+{model}_{dataset}_{gen_length}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_{prompt_mode}_vllm.json
 
 # AR (slow HF):
-{model}_{dataset}_{gen_length}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_ar.json
-
-# instruct_flat ablation (adds _flat before engine suffix):
-{model}_{dataset}_..._generations_flat_fast_dllm.json
-{model}_{dataset}_..._generations_flat_vllm.json
+{model}_{dataset}_{gen_length}_{batch_size}_{temp}_{few_shot}_{num_evals}_{n_samples}_generations_{prompt_mode}_ar.json
 ```
+
+Where `{prompt_mode}` resolves to one of:
+- `base_native`
+- `instruct_templated`
+- `instruct_flat`
+- `instruct_single_turn`
 
 Each JSON file contains:
 - `generations`: list of per-question results with generated text, extracted answers, and ground truth
@@ -281,7 +283,8 @@ that disentangles instruction tuning from chat template effects. See
 |------|-----------|--------|-------------|
 | `base_native` | Base | Flat string | Default for base models |
 | `instruct_flat` | Instruct | Same flat string as base | Ablation: instruct weights, base prompt |
-| `instruct_templated` | Instruct | Model-native chat template | Default for instruct models |
+| `instruct_templated` | Instruct | Model-native chat template | Default and recommended reporting mode for instruct models |
+| `instruct_single_turn` | Instruct | One user chat turn containing the full flat prompt | Diagnostic parity check for chat-wrapped but non-conversational serialization |
 
 ```bash
 # Full 3-way comparison (base + instruct_templated + instruct_flat)
@@ -289,66 +292,40 @@ that disentangles instruction tuning from chat template effects. See
 
 # Run instruct-flat ablation separately
 ./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_flat
+
+# Run a single-turn chat parity check
+./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_single_turn
+
+# Run multiple instruct prompt modes in one command
+./run_evaluation.sh -E passk -d countdown_cd4 -v instruct --prompt_mode instruct_templated --prompt_mode instruct_flat
 ```
 
-**Result filenames:** `instruct_flat` runs include `_flat` in the filename
-(e.g., `..._generations_flat_fast_dllm.json`) to distinguish them from
-standard instruct results.
+**Result filenames:**
+- `base_native` runs include `_base_native`
+- `instruct_templated` runs include `_instruct_templated`
+- `instruct_flat` runs include `_instruct_flat`
+- `instruct_single_turn` runs include `_instruct_single_turn`
 
 ---
 
-## LLaDA-Instruct EOS Overflow Fix
+## Countdown Guidance For LLaDA-Instruct
 
-LLaDA-Instruct suffers from a well-documented **EOS overflow** issue: during SFT,
-variable-length sequences are padded with `<|endoftext|>`, causing the model to
-learn to generate excessive EOS tokens during inference. This degrades output
-quality, especially for short-answer tasks like Countdown.
+For local `countdown_cd4` runs, the high-signal settings are simpler:
 
-**References:**
-- [LLaDA EVAL.md](https://github.com/ML-GSAI/LLaDA/blob/main/EVAL.md) — official parameter guidance
-- [Rainbow Padding (arXiv:2510.03680)](https://arxiv.org/abs/2510.03680) — root cause analysis
-- [Fast-dLLM Issue #5](https://github.com/NVlabs/Fast-dLLM/issues/5) — community reproduction issues
+1. Keep `block_length=32`.
+2. Use `instruct_templated` as the main instruct reporting mode.
+3. Treat `instruct_flat` and `instruct_single_turn` as ablations.
 
-### What the script does automatically
+Rationale:
 
-When running **LLaDA-Instruct** (detected by model name), `run_evaluation.sh`
-auto-applies two fixes:
+- `block_length=8` consistently hurt local countdown performance.
+- Explicit EOS suppression did not improve local countdown runs and in some direct
+  tests made them much worse.
+- The remaining low scores are mostly due to equation chains that are formatted
+  correctly but arithmetically invalid, not empty outputs or obvious EOS collapse.
 
-1. **Semi-autoregressive generation** — smaller `block_length` forces block-by-block
-   generation with conditioning on previous blocks, dramatically improving arithmetic
-   coherence:
-
-   | Dataset            | Default `block_length` | LLaDA-Instruct override |
-   |--------------------|-----------------------:|------------------------:|
-   | countdown/sudoku   |                     32 |                       8 |
-   | gsm8k              |                     32 |                       8 |
-   | trip_planning      |                     32 |                      16 |
-   | math/aime          |                     32 |                      64 |
-
-   For countdown_cd4, `gen_length` also increases from 32 → 64 to prevent truncation.
-
-2. **EOS suppression** — `logits_eos_inf=True` and `confidence_eos_eot_inf=True`
-   are auto-enabled for LLaDA-Instruct. These prevent the model from filling
-   generation slots with EOS tokens.
-
-### Official results with these fixes
-
-From the LLaDA EVAL.md:
-
-| Config                    | GSM8K  | MATH   |
-|---------------------------|--------|--------|
-| Default (block_length=512)| 68.8%  | 29.6%  |
-| Semi-AR (block_length=8/64) | **78.9%** | **42.7%** |
-
-### Override or disable
-
-```bash
-# Force specific block_length (overrides auto-detection)
-./run_evaluation.sh -E passk -m llada -v instruct -b 32
-
-# Disable EOS suppression
-./run_evaluation.sh -E passk -m llada -v instruct --logits_eos_inf false --confidence_eos_eot_inf false
-```
+So for countdown in this repo, we no longer surface EOS-specific benchmark flags
+in the main experiment workflow.
 
 ---
 

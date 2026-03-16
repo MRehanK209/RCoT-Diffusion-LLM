@@ -5,7 +5,12 @@ import torch
 import numpy as np
 
 
-VALID_PROMPT_MODES = ("base_native", "instruct_flat", "instruct_templated")
+VALID_PROMPT_MODES = (
+    "base_native",
+    "instruct_flat",
+    "instruct_templated",
+    "instruct_single_turn",
+)
 
 
 def parse_trip_response(response):
@@ -101,9 +106,10 @@ class TripPlanningDataset(torch.utils.data.Dataset):
       base_native        — flat prompt + "\\nSOLUTION: " suffix
       instruct_flat      — same flat string (no chat template)
       instruct_templated — single user message wrapped in chat template
-                           (trip planning uses a domain-specific TASK format
-                           that doesn't decompose into user/assistant turns,
-                           so we keep the flat content in a single user turn)
+      instruct_single_turn — alias for the same single-turn wrapping
+                             (trip planning uses a domain-specific TASK format
+                             that doesn't decompose into user/assistant turns,
+                             so both chat modes keep the flat content intact)
     """
 
     def __init__(
@@ -178,7 +184,10 @@ class TripPlanningDataset(torch.utils.data.Dataset):
     # ------------------------------------------------------------------
 
     def create_flat_prompt(self, prompt_text):
-        """Flat prompt with SOLUTION suffix — base_native and instruct_flat."""
+        """Flat prompt with exactly one terminal SOLUTION cue."""
+        prompt_text = prompt_text.rstrip()
+        if prompt_text.endswith("SOLUTION:"):
+            return prompt_text + " "
         return prompt_text + "\nSOLUTION: "
 
     def create_templated_instruct_prompt(self, prompt_text):
@@ -186,17 +195,28 @@ class TripPlanningDataset(torch.utils.data.Dataset):
 
         Trip planning uses a domain-specific TASK: format that doesn't
         decompose cleanly into user/assistant turns, so we keep the full
-        prompt as a single user message.
+        flat prompt as a single user message.
+
+        Preserve the terminal "SOLUTION:" cue from the flat prompt so the
+        instruct model continues the same completion format shown in the
+        few-shot demonstrations instead of switching into generic chatty prose.
         """
-        messages = [{"role": "user", "content": prompt_text}]
+        flat_prompt = self.create_flat_prompt(prompt_text).rstrip()
+        messages = [{"role": "user", "content": flat_prompt}]
         return self.tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=False
         )
+
+    def create_single_turn_instruct_prompt(self, prompt_text):
+        """Trip planning already uses a single user turn, so reuse that path."""
+        return self.create_templated_instruct_prompt(prompt_text)
 
     def create_prompt(self, prompt_text):
         """Dispatch to the appropriate prompt builder based on prompt_mode."""
         if self.prompt_mode in ("base_native", "instruct_flat"):
             return self.create_flat_prompt(prompt_text)
+        if self.prompt_mode == "instruct_single_turn":
+            return self.create_single_turn_instruct_prompt(prompt_text)
         return self.create_templated_instruct_prompt(prompt_text)
 
     # ------------------------------------------------------------------
