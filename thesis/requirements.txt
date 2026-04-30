@@ -1,0 +1,54 @@
+# =============================================================================
+# thesis.tex — toolchain requirements (NOT Python / pip)
+# Human-oriented steps: see README.md in this folder.
+# =============================================================================
+# LaTeX Workshop (Cursor/VS Code): default build is vendored Tectonic at
+#   ../.tools/tectonic/tectonic (repo root) so SSH/CI hosts work without TeX
+#   on PATH. Install TeX + latexmk to use the "latexmk (pdf)" recipe instead.
+#
+# Avoid "% !TEX program = latexmk" without TeX installed — it triggers LW’s
+# built-in latexmk path and can error (e.g. spawn ENOENT, MiKTeX probe).
+#
+# Optional: full TeX Live + latexmk, then open the repo (or thesis/) in
+# Cursor with LaTeX Workshop (James-Yu.latex-workshop).
+#
+# With TeX only: pdfLaTeX via latexmk -pdf. KOMA scrartcl
+# and packages listed under "TeX Live (tlmgr)" below.
+# =============================================================================
+
+# --- Option A: TeX Live + latexmk (recommended for LaTeX Workshop) ---------
+
+# Linux (Debian/Ubuntu example — names vary by distro):
+#   sudo apt update
+#   sudo apt install -y texlive-latex-extra texlive-fonts-recommended \
+#       latexmk
+#   # If anything is still missing:
+#   sudo tlmgr install koma-script
+
+# macOS:
+#   # MacTeX (full) or BasicTeX + tlmgr; ensure latexmk is on PATH, e.g.:
+#   export PATH="/Library/TeX/texbin:$PATH"
+#   sudo tlmgr update --self
+#   sudo tlmgr install latexmk collection-fontsrecommended
+
+# Windows:
+#   Install MiKTeX or TeX Live; enable “Install packages on the fly” if desired.
+#   Ensure latexmk.exe and pdflatex are on PATH (MiKTeX Console → Settings →
+#   “Directories” / PATH). In Cursor/VS Code, restart the app after changing PATH.
+
+# --- Option B: Tectonic (no separate TeX Live; downloads packages on build) --
+
+#   https://tectonic-typesetting.github.io/
+#   Then from thesis/:  tectonic thesis.tex
+
+# --- TeX Live package names (for minimal installs / tlmgr) --------------------
+# koma-script geometry setspace babel amsmath amsfonts amssymb tools
+# graphics graphicx array tabularx booktabs multirow makecell xcolor colortbl
+# float pdflscape cite placeins caption enumitem latexmk
+
+# --- Editor ------------------------------------------------------------------
+# Cursor / VS Code extension: LaTeX Workshop (James-Yu.latex-workshop)
+# Workspace settings: .vscode/settings.json (repo root) and thesis/.vscode/
+# If .tools/tectonic is missing, download the Linux x86_64 .tar.gz from
+#   https://github.com/tectonic-typesetting/tectonic/releases
+# unpack to RCoT-Diffusion-LLM/.tools/tectonic/tectonic (chmod +x).

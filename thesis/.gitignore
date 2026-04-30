@@ -13,3 +13,4 @@
 *.lot
 *.tdo
 .DS_Store
+.vscode/
