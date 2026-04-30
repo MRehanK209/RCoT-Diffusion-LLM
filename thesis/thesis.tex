@@ -1,0 +1,143 @@
+%%% Goettingen University-style thesis draft project
+%%% Based on the structure of mhellmeier/LaTeX-Thesis-Template.
+\documentclass[12pt,a4paper,american,oneside]{scrartcl}
+\input{packages}
+\input{definitions}
+
+\begin{document}
+\sloppy
+\pagenumbering{Roman}
+\include{front-page}
+\cleardoublepage
+
+\section*{Declaration of Independent Work}
+\markboth{Declaration of Independent Work}{Declaration of Independent Work}
+\addcontentsline{toc}{section}{Declaration of Independent Work}
+I hereby declare that I have written this thesis draft independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used in this draft according to established academic citation rules. This version is a first thesis draft based on the Milestone 2 material and still contains draft notes, figure placeholders, and milestone scaffolding in the appendix.
+
+\vspace{2cm}
+G\"ottingen, 7 April 2026
+
+\vspace{1.2cm}
+\noindent\rule{6cm}{0.4pt}\hfill\rule{6cm}{0.4pt}\par
+\noindent Place, Date\hfill Signature
+\cleardoublepage
+
+\section*{Abstract}
+\markboth{Abstract}{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+This first thesis draft investigates whether chain-of-thought reasoning can be rethought through diffusion language models and, if so, under which evaluation protocol such a comparison is most meaningful. The empirical study compares two diffusion families, LLaDA-8B and Dream-v0-7B, with two autoregressive families, Qwen2.5-7B and Llama-3.1-8B, across GSM8K, Countdown-cd4, and Trip Planning under deterministic and stochastic pass@k evaluation. The current evidence supports three provisional contributions: diffusion checkpoints are strongest in deterministic or pass@1 planning settings, autoregressive checkpoints overtake at larger k; per-question Pearson correlations indicate that failure-mode alignment is often organized more strongly by generation paradigm than by shared pretrained architecture; and prompt sensitivity differs by paradigm, with diffusion models stronger at zero-shot GSM8K while autoregressive models benefit more from few-shot examples.
+\cleardoublepage
+
+\begin{spacing}{1}
+\tableofcontents
+\end{spacing}
+\clearpage
+
+\markboth{List of Abbreviations}{List of Abbreviations}
+\phantomsection
+\addcontentsline{toc}{section}{List of Abbreviations}
+\section*{List of Abbreviations}
+\begin{spacing}{1}
+\input{acronyms}
+\end{spacing}
+\clearpage
+
+\begin{spacing}{1}
+\renewcommand{\listfigurename}{List of Figures}
+\markboth{List of Figures}{List of Figures}
+\phantomsection
+\addcontentsline{toc}{section}{List of Figures}
+\listoffigures
+\end{spacing}
+\clearpage
+
+\begin{spacing}{1}
+\renewcommand{\listtablename}{List of Tables}
+\markboth{List of Tables}{List of Tables}
+\phantomsection
+\addcontentsline{toc}{section}{List of Tables}
+\listoftables
+\end{spacing}
+\clearpage
+
+\setcounter{pageCounter}{\value{page}}
+\pagenumbering{arabic}
+
+\input{chapters/body}
+
+\clearpage
+\FloatBarrier
+\markboth{References}{References}
+\phantomsection
+\addcontentsline{toc}{section}{References}
+\begin{thebibliography}{99}
+
+\bibitem{austin2021structured}
+J. Austin, D. D. Johnson, J. Ho, D. Tarlow, and R. van den Berg,
+``Structured Denoising Diffusion Models in Discrete State-Spaces,''
+\emph{Advances in Neural Information Processing Systems}, vol. 34, 2021.
+
+\bibitem{nie2025llada}
+S. Nie, F. Zhu, Z. You, X. Zhang, J. Ou, J. Hu, J. Zhou, Y. Lin, J.-R. Wen, and C. Li,
+``Large Language Diffusion Models,''
+\emph{arXiv preprint arXiv:2502.09992}, 2025.
+
+\bibitem{ye2025dream}
+J. Ye, Z. Xie, L. Zheng, J. Gao, Z. Wu, X. Jiang, Z. Li, and L. Kong,
+``Dream 7B: Diffusion Large Language Models,''
+\emph{arXiv preprint arXiv:2508.15487}, 2025.
+
+\bibitem{qwen2024qwen25}
+Qwen Team,
+``Qwen2.5 Technical Report,''
+\emph{arXiv preprint arXiv:2412.15115}, 2024.
+
+\bibitem{grattafiori2024llama}
+A. Grattafiori \emph{et al.},
+``The Llama 3 Herd of Models,''
+\emph{arXiv preprint arXiv:2407.21783}, 2024.
+
+\bibitem{cobbe2021gsm8k}
+K. Cobbe \emph{et al.},
+``Training Verifiers to Solve Math Word Problems,''
+\emph{arXiv preprint arXiv:2110.14168}, 2021.
+
+\bibitem{xie2024travelplanner}
+J. Xie, K. Zhang, J. Chen, T. Zhu, R. Lou, Y. Tian, Y. Xiao, and Y. Su,
+``TravelPlanner: A Benchmark for Real-World Planning with Language Agents,''
+\emph{arXiv preprint arXiv:2402.01622}, 2024.
+
+\bibitem{chen2021humaneval}
+M. Chen \emph{et al.},
+``Evaluating Large Language Models Trained on Code,''
+\emph{arXiv preprint arXiv:2107.03374}, 2021.
+
+\bibitem{kwon2023pagedattention}
+W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. Yu, J. E. Gonzalez, H. Zhang, and I. Stoica,
+``Efficient Memory Management for Large Language Model Serving with PagedAttention,''
+\emph{arXiv preprint arXiv:2309.06180}, 2023.
+
+\end{thebibliography}
+
+
+\section{AI Usage Card}
+This appendix is included because the provided GIPPLab sample thesis contains an AI usage card. The final declaration should be adjusted to the applicable University of G\"ottingen and study-program rules before submission.
+
+\begin{table}[H]
+\centering
+\caption{Draft AI usage card for the thesis project.}
+\small
+\begin{tabularx}{\textwidth}{p{4cm}Y}
+\toprule
+Category & Draft entry \\
+\midrule
+Tools used & ChatGPT was used to convert the Milestone 2 material into a LaTeX thesis draft, organize the project into a repository-style structure, and generate first-pass prose around the provided experimental results. \\
+Human responsibility & The author remains responsible for checking every claim, table value, citation, and interpretation before submission. \\
+Data and results & No new experimental numbers were invented. The tables and figure captions are based on the Milestone 2 material supplied by the author. \\
+Writing status & This is a first thesis draft. It contains draft framing, placeholders, and appendix material that should be revised before final submission. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\end{document}
