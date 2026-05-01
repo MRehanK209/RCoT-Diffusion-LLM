@@ -1,0 +1,88 @@
+\subsection{RQ1 and RQ2: Countdown-cd4 ranking reversal under pass@k}
+RQ1 asks whether diffusion models are better in low-sample planning, and RQ2 asks whether larger sampling budgets reverse that answer. Countdown-cd4 provides the clearest evidence that they do: diffusion models lead at pass@1, but autoregressive models overtake decisively by pass@128. Figure~\ref{fig:countdown-base} and Table~\ref{tab:countdown-base-passk} are the core empirical answer to the thesis question.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/countdown_base_crossover.pdf}
+\caption{Countdown-cd4 base pass@k crossover. Diffusion models lead at pass@1; Qwen and Llama overtake by large $k$.}
+\label{fig:countdown-base}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown-cd4 base pass@k, $n=128$, temperature $=0.7$.}
+\label{tab:countdown-base-passk}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} & \textbf{128} \\
+\midrule
+LLaDA-Base & 0.142854 & 0.162592 & 0.180763 & 0.199806 & 0.219397 & 0.238147 & 0.255617 & 0.272177 \\
+Dream-Base & 0.113037 & 0.156778 & 0.200547 & 0.244207 & 0.285698 & 0.321771 & 0.351702 & 0.376008 \\
+Qwen-Base & 0.040433 & 0.075074 & 0.131354 & 0.210272 & 0.301421 & 0.387202 & 0.456992 & 0.513105 \\
+Llama-Base & 0.027005 & 0.051350 & 0.093610 & 0.159564 & 0.247519 & 0.343385 & 0.428966 & 0.494960 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+At pass@1 the ordering is LLaDA-Base $>$ Dream-Base $>$ Qwen-Base $>$ Llama-Base. At pass@128 it becomes Qwen-Base $>$ Llama-Base $>$ Dream-Base $>$ LLaDA-Base. This reversal is not a small fluctuation: Qwen rises from 0.040433 to 0.513105, while LLaDA rises from 0.142854 to only 0.272177. The result supports the concentration-versus-diversity hypothesis.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/countdown_instruct_passk.pdf}
+\caption{Countdown-cd4 instruct pass@k under templated prompting. Dream-Instruct is the strongest low-$k$ instruct model, while Llama-Instruct becomes strongest at high $k$.}
+\label{fig:countdown-instruct}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown-cd4 instruct-templated pass@k, $n=128$, temperature $=0.7$.}
+\label{tab:countdown-instruct-passk}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} & \textbf{128} \\
+\midrule
+LLaDA-Instruct & 0.024091 & 0.027805 & 0.031700 & 0.036142 & 0.041394 & 0.046858 & 0.051550 & 0.055444 \\
+Dream-Instruct & 0.091482 & 0.125477 & 0.160331 & 0.196433 & 0.231875 & 0.263635 & 0.293203 & 0.322581 \\
+Qwen-Instruct & 0.078385 & 0.106662 & 0.134234 & 0.159261 & 0.181153 & 0.199472 & 0.212810 & 0.220766 \\
+Llama-Instruct & 0.057751 & 0.102571 & 0.167304 & 0.243821 & 0.316324 & 0.376062 & 0.424427 & 0.461694 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/countdown_prompt_diagnostic.pdf}
+\caption{Countdown prompt-mode diagnostic from the earlier smaller run. Flat prompting changes Dream and Qwen substantially and leaves Llama-Instruct strong at high $k$.}
+\label{fig:countdown-prompt}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown prompt-mode diagnostic from the earlier smaller run.}
+\label{tab:countdown-prompt-diagnostic}
+\scriptsize
+\begin{tabularx}{\textwidth}{Ycc}
+\toprule
+\textbf{Model / prompt} & \textbf{pass@1} & \textbf{pass@128} \\
+\midrule
+LLaDA-Base & 0.028503 & 0.068359 \\
+LLaDA-Instruct templated & 0.027954 & 0.064453 \\
+LLaDA-Instruct flat & 0.028442 & 0.050781 \\
+Dream-Base & 0.019302 & 0.103516 \\
+Dream-Instruct templated & 0.012512 & 0.066406 \\
+Dream-Instruct flat & 0.018097 & 0.097656 \\
+Qwen-Base & 0.008514 & 0.25 \\
+Qwen-Instruct templated & 0.007095 & 0.037109 \\
+Qwen-Instruct flat & 0.010483 & 0.119141 \\
+Llama-Base & 0.028549 & 0.511719 \\
+Llama-Instruct templated & 0.062790 & 0.480469 \\
+Llama-Instruct flat & 0.049896 & 0.484375 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The instruct setting is more model-dependent than the base setting. Dream-Instruct remains useful at pass@1 and pass@128, Llama-Instruct becomes the strongest high-$k$ model, and LLaDA-Instruct is weak throughout the curve. This reinforces the methodological point that prompt mode and instruction tuning can reverse conclusions.

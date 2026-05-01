@@ -1,0 +1,22 @@
+\section{Related Work}
+
+\subsection{Autoregressive Language Modeling and Decoding}
+Autoregressive language models factor a token sequence into a product of conditional next-token distributions. Transformer decoders made this factorization scalable, and large pretrained autoregressive models established few-shot prompting as a practical evaluation interface \cite{vaswani2017attention,brown2020language}. Decoding can be deterministic, as in greedy decoding or low-temperature decoding, or stochastic, as in temperature sampling. The latter is central for pass@k reasoning evaluation because repeated samples can explore alternative solution paths.
+
+\subsection{Chain-of-Thought Reasoning and Sampling-Based Evaluation}
+Chain-of-thought prompting showed that language models can improve multi-step reasoning when prompted to produce intermediate reasoning before a final answer \cite{wei2022chain}. Self-consistency then showed that sampling multiple chains and aggregating answers can outperform a single greedy chain \cite{wang2023selfconsistency}. This thesis builds on that evaluation perspective, but compares two generation paradigms rather than only two prompts or decoding temperatures.
+
+\subsection{Discrete Diffusion and Masked Diffusion Language Models}
+Diffusion models were originally most visible in continuous domains, but discrete denoising diffusion models extend the idea to categorical state spaces \cite{austin2021structured}. For language, masked diffusion provides a particularly natural construction: tokens are hidden or corrupted and then iteratively denoised. The model therefore learns to predict missing tokens from bidirectional context instead of only from a left prefix. This difference is the theoretical basis for expecting different reasoning behavior from diffusion and autoregressive language models.
+
+\subsection{LLaDA and Dream as Diffusion LLMs}
+LLaDA and Dream are the diffusion LLMs studied here. LLaDA frames large language modeling as a denoising diffusion process over masked token sequences \cite{nie2025llada}. Dream is a 7B diffusion language model whose implementation in this repository is adapted from the official Dream codebase and whose planning evaluation code is reused for Countdown and Trip Planning \cite{ye2025dream}. Dream is especially important for the correlation analysis because it shares architectural lineage with Qwen2.5 while changing the generation paradigm.
+
+\subsection{Qwen2.5 and Llama 3.1 as Autoregressive Baselines}
+Qwen2.5 and Llama 3.1 are strong open autoregressive baselines with base and instruction-tuned variants \cite{qwen2024qwen25,grattafiori2024llama}. They are not weak straw models: in the experiments below, they often overtake the diffusion models when many samples are available. Their inclusion therefore makes the comparison a paradigm-level evaluation rather than a diffusion-only ablation.
+
+\subsection{Benchmarks: GSM8K, Countdown, and Trip Planning}
+GSM8K is a standard grade-school math word-problem benchmark used to evaluate multi-step numerical reasoning \cite{cobbe2021gsm8k}. Countdown-cd4 is a constrained arithmetic planning task in which the model must compose the supplied numbers to reach a target using arithmetic operations. Trip Planning is a structured itinerary-planning task related to TravelPlanner-style evaluation, requiring ordered city visits and exact stay durations \cite{xie2024travelplanner}. Together, the benchmarks separate ordinary mathematical reasoning from constrained symbolic planning and natural-language planning.
+
+\subsection{pass@k Evaluation and Inference Systems}
+The pass@k metric, popularized in code generation evaluation, estimates the probability that at least one of $k$ samples solves a problem \cite{chen2021humaneval}. It is crucial for this thesis because it exposes a ranking reversal that deterministic accuracy hides. The implementation also matters operationally: diffusion runs use fast-dLLM for the main pass@k experiments, while autoregressive runs use vLLM and its PagedAttention serving system \cite{kwon2023pagedattention}. Standard dLLM and Hugging Face autoregressive runs are retained only for deterministic validation where applicable.

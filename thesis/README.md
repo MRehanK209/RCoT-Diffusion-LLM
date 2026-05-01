@@ -2,6 +2,24 @@
 
 This folder is a University of Göttingen–style thesis draft (structure inspired by `mhellmeier/LaTeX-Thesis-Template`). The **only file you must compile** is `thesis.tex`; it pulls in `packages.tex`, `definitions.tex`, `front-page.tex`, `acronyms.tex`, and `chapters/body.tex`.
 
+The current draft includes generated evaluation figures in `images/`. To rebuild them from the repository result JSONs, run this from the repository root:
+
+```bash
+.venv/bin/python thesis/scripts/build_thesis_figures.py
+```
+
+The plotting script is dependency-light and writes PDF figures directly into `thesis/images/`.
+
+The strengthened draft also adds analysis helpers for parser sensitivity, diversity, and oracle complementarity:
+
+```bash
+.venv/bin/python thesis/scripts/analyze_parser_failures.py
+.venv/bin/python thesis/scripts/analyze_diversity_and_ensemble.py
+.venv/bin/python thesis/scripts/build_thesis_figures.py
+```
+
+The first two scripts write CSV summaries into `thesis/tables/`; the figure builder reads those CSVs when present.
+
 ---
 
 ## 1. Install a LaTeX toolchain
@@ -89,6 +107,12 @@ tectonic thesis.tex
 
 This repository may also ship a vendored Tectonic under `../.tools/tectonic/` for Cursor builds; that path is optional and mainly for environments without `apt`.
 
+If the vendored binary is present, this works from `thesis/`:
+
+```bash
+../.tools/tectonic/tectonic thesis.tex
+```
+
 ---
 
 ## 3. Cursor / VS Code (LaTeX Workshop)
@@ -120,8 +144,12 @@ Do **not** add `% !TEX program = latexmk` unless TeX is installed; without TeX, 
 | `packages.tex` | `\usepackage` list |
 | `definitions.tex` | Layout helpers and macros |
 | `acronyms.tex` | Abbreviation table |
-| `chapters/body.tex` | Main body and appendix material |
+| `chapters/body.tex` | Lightweight orchestrator that inputs the chapter files |
+| `chapters/01_*.tex`–`08_*.tex` | Main thesis sections split for easier editing |
+| `chapters/05*_results_*.tex` | Results subsections split out because they contain most figures/tables |
+| `chapters/appendix_*.tex` | Appendix sections |
 | `images/` | Figures used by the draft |
+| `scripts/build_thesis_figures.py` | Rebuilds thesis result figures from JSON artifacts |
 | `source_material/` | Source uploads used to build the draft |
 | `Makefile` | `make` → `latexmk -pdf thesis.tex` |
 | `requirements.txt` | Machine-readable notes (not `pip`) |
@@ -130,4 +158,4 @@ Do **not** add `% !TEX program = latexmk` unless TeX is installed; without TeX, 
 
 ## 6. Draft status
 
-This is a first thesis draft: it still needs proofreading, supervisor feedback, final figure styling, and possible extra analysis before submission.
+This is a strengthened thesis draft: it has real result figures, parser documentation, and updated methodology/results prose. It still needs proofreading, supervisor feedback, final styling, and possible extra analysis before submission.

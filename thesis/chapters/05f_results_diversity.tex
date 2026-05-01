@@ -1,0 +1,42 @@
+\subsection{RQ2: Sampling diversity and pass@k growth}
+RQ2 can be reframed as a question about search behavior: which models turn additional samples into genuinely different valid candidates? Figure~\ref{fig:diversity-gain} and Table~\ref{tab:diversity-summary} show that the planning benchmarks are at least consistent with the concentration-versus-diversity interpretation. Diffusion models often produce fewer distinct normalized answers and smaller pass@k gains, while the strongest autoregressive high-$k$ models maintain far broader output diversity and convert it into steeper pass@k growth.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.84\textwidth]{images/diversity_vs_passk_gain.pdf}
+\caption{Mean answer diversity versus pass@k gain. The planning-benchmark points are consistent with a concentration-versus-diversity trade-off: broader answer diversity often accompanies larger gains from search.}
+\label{fig:diversity-gain}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/duplicate_rate_by_model.pdf}
+\caption{Mean duplicate rate by model and condition. Several diffusion planning runs repeatedly emit near-identical candidates, while the strongest high-$k$ autoregressive runs keep duplicate rates much lower.}
+\label{fig:duplicate-rate}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/passk_gain_by_model.pdf}
+\caption{pass@k gain by model and condition. The largest gains appear in the autoregressive planning runs, especially Qwen on Countdown Base and Llama on Trip Planning.}
+\label{fig:passk-gain}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Compact diversity summary for the main planning conditions. Unique-answer counts are means per question; gains are pass@max minus pass@1 in percentage points.}
+\label{tab:diversity-summary}
+\footnotesize
+\begin{tabularx}{\textwidth}{L{2.5cm}cccc}
+\toprule
+\textbf{Condition} & \textbf{Best dLLM unique answers} & \textbf{Best AR unique answers} & \textbf{Best dLLM gain} & \textbf{Best AR gain} \\
+\midrule
+Countdown base & Dream 1.42 & Llama 58.84 & Dream 26.30 & Qwen 47.27 \\
+Countdown instruct & Dream 2.39 & Llama 34.53 & Dream 23.11 & Llama 40.39 \\
+Trip Planning base & LLaDA 37.66 & Qwen 44.79 & Dream 17.06 & Llama 23.05 \\
+Trip Planning instruct & LLaDA 36.84 & Qwen 39.92 & Dream 9.34 & Llama 19.29 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+These metrics do not prove the internal mechanism of diffusion denoising. They do, however, make the thesis interpretation more disciplined. Countdown Base is the clearest case: LLaDA averages only 1.31 unique normalized answers per question and a 12.93-point pass@k gain, while Qwen averages 44.65 unique normalized answers and a 47.27-point gain. Trip Planning is noisier because parser-validity interacts with diversity, but the same broad pattern remains visible.

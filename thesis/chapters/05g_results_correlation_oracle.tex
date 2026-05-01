@@ -1,0 +1,179 @@
+\subsection{RQ4: Per-question correlation and oracle complementarity}
+RQ4 asks whether the paradigms solve the same questions. The per-question analysis says ``partly, but far from completely.'' Figure~\ref{fig:correlation-summary} summarizes the within-paradigm and strongest cross-paradigm correlations. Tables~\ref{tab:countdown-base-corr}--\ref{tab:trip-inst-corr} list the pairwise matrices, and Table~\ref{tab:oracle-summary} adds an oracle-union perspective using the existing samples.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.84\textwidth]{images/correlation_summary.pdf}
+\caption{Summary of per-question correlations. Countdown Base has the strongest dLLM--dLLM agreement, while Trip Planning has the strongest AR--AR agreement.}
+\label{fig:correlation-summary}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown Base per-question correlations.}
+\label{tab:countdown-base-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+LLaDA-Base vs Dream-Base & dLLM--dLLM & 0.6382 & $1.4\times10^{-114}$ \\
+Qwen-Base vs Llama-Base & AR--AR & 0.6149 & $3.1\times10^{-104}$ \\
+Dream-Base vs Qwen-Base & dLLM--AR, shared backbone lineage & 0.5718 & $3.5\times10^{-87}$ \\
+LLaDA-Base vs Qwen-Base & dLLM--AR & 0.5342 & $2.8\times10^{-74}$ \\
+LLaDA-Base vs Llama-Base & dLLM--AR & 0.4580 & $1.3\times10^{-52}$ \\
+Dream-Base vs Llama-Base & dLLM--AR & 0.4432 & $5.6\times10^{-49}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown Instruct per-question correlations.}
+\label{tab:countdown-inst-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.4345 & $6.1\times10^{-47}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR & 0.4062 & $1.1\times10^{-40}$ \\
+Qwen-Inst vs Llama-Inst & AR--AR & 0.4039 & $3.3\times10^{-40}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.1475 & $3.1\times10^{-6}$ \\
+LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.1464 & $3.6\times10^{-6}$ \\
+LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.0867 & $6.3\times10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{GSM8K Base per-question correlations.}
+\label{tab:gsm8k-base-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+LLaDA-Base vs Dream-Base & dLLM--dLLM & 0.6291 & $1.8\times10^{-15}$ \\
+Dream-Base vs Qwen-Base & dLLM--AR, shared backbone lineage & 0.6189 & $6.9\times10^{-15}$ \\
+LLaDA-Base vs Qwen-Base & dLLM--AR & 0.4907 & $4.1\times10^{-9}$ \\
+LLaDA-Base vs Llama-Base & dLLM--AR & 0.4316 & $3.7\times10^{-7}$ \\
+Dream-Base vs Llama-Base & dLLM--AR & 0.3510 & $4.9\times10^{-5}$ \\
+Qwen-Base vs Llama-Base & AR--AR & 0.3204 & $2.3\times10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{GSM8K Instruct per-question correlations.}
+\label{tab:gsm8k-inst-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Qwen-Inst vs Llama-Inst & AR--AR & 0.6638 & $1.4\times10^{-17}$ \\
+LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.6550 & $5.0\times10^{-17}$ \\
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.6398 & $4.3\times10^{-16}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.5671 & $3.0\times10^{-12}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR, shared backbone lineage & 0.5598 & $6.5\times10^{-12}$ \\
+LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.4847 & $6.8\times10^{-9}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Trip Planning Base per-question correlations.}
+\label{tab:trip-base-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Qwen-Base vs Llama-Base & AR--AR & 0.7061 & $1.7\times10^{-31}$ \\
+LLaDA-Base vs Llama-Base & dLLM--AR & 0.5394 & $1.7\times10^{-16}$ \\
+LLaDA-Base vs Qwen-Base & dLLM--AR & 0.5158 & $5.5\times10^{-15}$ \\
+Dream-Base vs Qwen-Base & dLLM--AR, shared backbone lineage & 0.4829 & $4.4\times10^{-13}$ \\
+Dream-Base vs Llama-Base & dLLM--AR & 0.3629 & $1.3\times10^{-7}$ \\
+LLaDA-Base vs Dream-Base & dLLM--dLLM & 0.3451 & $5.6\times10^{-7}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Trip Planning Instruct per-question correlations.}
+\label{tab:trip-inst-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Qwen-Inst vs Llama-Inst & AR--AR & 0.7190 & $4.1\times10^{-33}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.4622 & $5.6\times10^{-12}$ \\
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.2484 & $3.9\times10^{-4}$ \\
+LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.2170 & $2.0\times10^{-3}$ \\
+LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.1647 & $2.0\times10^{-2}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR, shared backbone lineage & 0.1572 & $2.6\times10^{-2}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Within-paradigm and strongest cross-paradigm correlations.}
+\label{tab:corr-summary}
+\scriptsize
+\begin{tabularx}{\textwidth}{L{2.4cm}cccY}
+\toprule
+\textbf{Condition} & \textbf{dLLM--dLLM} & \textbf{AR--AR} & \textbf{Strongest cross} & \textbf{Interpretation} \\
+\midrule
+Countdown Base & 0.6382 & 0.6149 & 0.5718 & Diffusion pair exceeds Dream--Qwen despite Dream's Qwen lineage. \\
+Countdown Instruct & 0.1475 & 0.4039 & 0.4345 & LLaDA-Instruct is an outlier; Dream aligns more with AR models. \\
+GSM8K Base & 0.6291 & 0.3204 & 0.6189 & Saturated but still shows strong diffusion-pair agreement. \\
+GSM8K Instruct & 0.5671 & 0.6638 & 0.6550 & Instruct prompting makes alignments more mixed. \\
+Trip Planning Base & 0.3451 & 0.7061 & 0.5394 & AR models share the strongest planning-failure pattern. \\
+Trip Planning Instruct & 0.4622 & 0.7190 & 0.2484 & Low cross-paradigm correlations suggest complementarity. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The key result is Countdown Base. LLaDA-Base and Dream-Base correlate at $r=0.6382$, which is higher than Dream-Base and Qwen-Base at $r=0.5718$ even though Dream shares Qwen lineage. This suggests that, for this constrained planning task, generation paradigm is more predictive of failure-mode alignment than shared pretrained architecture. Trip Planning Instruct adds a different insight: cross-paradigm correlations are low, especially Dream-Instruct versus Qwen-Instruct at $r=0.1572$, which points to complementarity and possible ensemble value.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.84\textwidth]{images/oracle_ensemble_gain.pdf}
+\caption{Oracle complementarity gain over the best single model. GSM8K is saturated, but both planning benchmarks show measurable paradigm-level union gains.}
+\label{fig:oracle-gain}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/paradigm_overlap_stacked.pdf}
+\caption{Question overlap between diffusion and autoregressive unions. Trip Planning instruct has especially large ``neither'' and nontrivial ``dLLM only'' / ``AR only'' regions, which is consistent with complementarity rather than mere redundancy.}
+\label{fig:oracle-overlap}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Oracle complementarity from existing samples. Accuracies are percentages of questions solved by at least one sample.}
+\label{tab:oracle-summary}
+\footnotesize
+\begin{tabularx}{\textwidth}{L{2.4cm}Yccc}
+\toprule
+\textbf{Condition} & \textbf{Best single model} & \textbf{Best dLLM + AR oracle union} & \textbf{All-model oracle union} & \textbf{Gain over best single} \\
+\midrule
+GSM8K base & Qwen 100.00 & LLaDA + Qwen 100.00 & 100.00 & 0.00 \\
+GSM8K instruct & Qwen 100.00 & LLaDA + Qwen 100.00 & 100.00 & 0.00 \\
+Countdown base & Qwen 51.31 & Dream + Qwen 54.54 & 60.89 & 3.23 \\
+Countdown instruct & Llama 46.17 & Dream + Llama 49.70 & 50.50 & 3.53 \\
+Trip Planning base & Llama 25.50 & Dream + Llama 32.00 & 35.50 & 6.50 \\
+Trip Planning instruct & Llama 21.00 & Dream + Llama 27.50 & 29.00 & 6.50 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The oracle analysis makes the complementarity claim more concrete. On Countdown Base, the best single model solves 509 of 992 questions, but a Dream+Qwen oracle union solves 541 and the full four-model union solves 604. Trip Planning is even more striking relative to its scale: the best single model solves 51 of 200 base questions, while Dream+Llama solves 64 and the full four-model union solves 71. These are only upper bounds because no practical selector is implemented, but they show that the correlation results are not merely statistical decoration.

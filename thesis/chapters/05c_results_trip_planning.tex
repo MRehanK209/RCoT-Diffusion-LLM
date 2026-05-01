@@ -1,0 +1,84 @@
+\subsection{RQ1 and RQ2: Trip Planning as a natural-language planning check}
+RQ1 and RQ2 should not be answered from arithmetic planning alone. Trip Planning therefore tests whether the Countdown crossover persists under a stricter natural-language parser. The answer is yes in weaker but still meaningful form: Dream remains strongest among the standard diffusion runs at low $k$, while Llama benefits more from search and the flat-prompt Llama run becomes the strongest high-$k$ curve in the merged comparison of available runs.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.94\textwidth]{images/trip_planning_passk.pdf}
+\caption{Trip Planning pass@k for all stochastic milestone runs. Dream is strong at low $k$; Llama-Instruct flat has the strongest high-$k$ curve.}
+\label{fig:trip-passk}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption[Trip Planning deterministic comparison]{Trip Planning deterministic comparison from \texttt{\detokenize{accuracy_trip_planning_comparison.json}}.}
+\label{tab:trip-deterministic}
+\scriptsize
+\begin{tabularx}{\textwidth}{Yc}
+\toprule
+\textbf{Model / variant} & \textbf{Accuracy} \\
+\midrule
+Dream-v0-Instruct-7B [bl=256] [dllm] & 0.15 \\
+Dream-v0-Instruct-7B [bl=32] [dllm] & 0.15 \\
+Dream-v0-Instruct-7B [bl=256] [fast-dllm] & 0.145 \\
+Dream-v0-Base-7B [bl=256] [dllm] & 0.145 \\
+Dream-v0-Base-7B [bl=32] [dllm] & 0.145 \\
+Dream-v0-Base-7B [bl=32] [fast-dllm] & 0.135 \\
+Dream-v0-Instruct-7B [flat] [bl=32] [fast-dllm] & 0.125 \\
+Dream-v0-Instruct-7B [bl=32] [fast-dllm] & 0.125 \\
+LLaDA-8B-Base [bl=256] [dllm] & 0.115 \\
+Dream-v0-Instruct-7B [flat] [bl=256] [fast-dllm] & 0.11 \\
+Dream-v0-Base-7B [bl=256] [fast-dllm] & 0.11 \\
+Llama-3.1-8B-Instruct [flat] [ar] & 0.095 \\
+Llama-3.1-8B-Instruct [flat] [vllm] & 0.08 \\
+LLaDA-8B-Instruct [bl=256] [dllm] & 0.08 \\
+LLaDA-8B-Base [bl=32] [dllm] & 0.075 \\
+LLaDA-8B-Base [bl=256] [fast-dllm] & 0.06 \\
+LLaDA-8B-Base [bl=32] [fast-dllm] & 0.05 \\
+Llama-3.1-8B [ar] & 0.045 \\
+Dream-v0-Instruct-7B [flat] [bl=256] [dllm] & 0.045 \\
+Dream-v0-Instruct-7B [flat] [bl=32] [dllm] & 0.045 \\
+LLaDA-8B-Instruct [bl=32] [dllm] & 0.045 \\
+Llama-3.1-8B [vllm] & 0.025 \\
+LLaDA-8B-Instruct [flat] [bl=32] [dllm] & 0.025 \\
+Llama-3.1-8B-Instruct [ar] & 0.02 \\
+Llama-3.1-8B-Instruct [vllm] & 0.02 \\
+Qwen2.5-7B-Instruct [flat] [ar] & 0.02 \\
+Qwen2.5-7B-Instruct [flat] [vllm] & 0.02 \\
+Qwen2.5-7B-Instruct [ar] & 0.02 \\
+Qwen2.5-7B [ar] & 0.02 \\
+LLaDA-8B-Instruct [bl=256] [fast-dllm] & 0.02 \\
+Qwen2.5-7B-Instruct [vllm] & 0.015 \\
+Qwen2.5-7B [vllm] & 0.015 \\
+LLaDA-8B-Instruct [flat] [bl=256] [dllm] & 0.01 \\
+LLaDA-8B-Instruct [flat] [bl=32] [fast-dllm] & 0.005 \\
+LLaDA-8B-Instruct [flat] [bl=256] [fast-dllm] & 0.0 \\
+LLaDA-8B-Instruct [bl=32] [fast-dllm] & 0.0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Trip Planning pass@k, merged from Dream/Qwen, refreshed LLaDA, and Llama milestone sources.}
+\label{tab:trip-passk}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} \\
+\midrule
+Dream-Base & 0.054375 & 0.081171 & 0.108229 & 0.133728 & 0.158874 & 0.187752 & 0.225 \\
+Dream-Instruct & 0.056563 & 0.074747 & 0.090129 & 0.105060 & 0.121656 & 0.138662 & 0.15 \\
+LLaDA-Base & 0.036172 & 0.053909 & 0.076093 & 0.100449 & 0.123108 & 0.143807 & 0.165 \\
+LLaDA-Instruct & 0.010000 & 0.017852 & 0.029847 & 0.046623 & 0.068156 & 0.090958 & 0.105 \\
+LLaDA-Instruct flat & 0.012109 & 0.022006 & 0.037392 & 0.058509 & 0.084393 & 0.111698 & 0.14 \\
+Qwen-Base & 0.014844 & 0.026897 & 0.045297 & 0.069521 & 0.098128 & 0.128546 & 0.155 \\
+Qwen-Instruct & 0.016484 & 0.025977 & 0.036972 & 0.049130 & 0.062370 & 0.075451 & 0.085 \\
+Llama-Base & 0.024531 & 0.044851 & 0.076327 & 0.117150 & 0.160924 & 0.204920 & 0.255 \\
+Llama-Instruct & 0.017109 & 0.031468 & 0.054109 & 0.084477 & 0.119603 & 0.160770 & 0.21 \\
+Llama-Instruct flat & 0.059922 & 0.093423 & 0.134510 & 0.179624 & 0.224752 & 0.265577 & 0.295 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Dream-Instruct and Dream-Base are the strongest standard diffusion curves at low $k$, while Llama-Instruct flat reaches 0.295 at pass@64. This is not identical to Countdown because the flat prompt changes Llama substantially, but the general evaluation lesson is the same: single-sample and many-sample evaluations answer different questions.

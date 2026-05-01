@@ -14,7 +14,7 @@
 \section*{Declaration of Independent Work}
 \markboth{Declaration of Independent Work}{Declaration of Independent Work}
 \addcontentsline{toc}{section}{Declaration of Independent Work}
-I hereby declare that I have written this thesis draft independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used in this draft according to established academic citation rules. This version is a first thesis draft based on the Milestone 2 material and still contains draft notes, figure placeholders, and milestone scaffolding in the appendix.
+I hereby declare that I have written this thesis draft independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used in this draft according to established academic citation rules. This version is a strengthened thesis draft based on the Milestone 2 material, the local evaluation code, and the available JSON result artifacts.
 
 \vspace{2cm}
 G\"ottingen, 7 April 2026
@@ -27,7 +27,7 @@ G\"ottingen, 7 April 2026
 \section*{Abstract}
 \markboth{Abstract}{Abstract}
 \addcontentsline{toc}{section}{Abstract}
-This first thesis draft investigates whether chain-of-thought reasoning can be rethought through diffusion language models and, if so, under which evaluation protocol such a comparison is most meaningful. The empirical study compares two diffusion families, LLaDA-8B and Dream-v0-7B, with two autoregressive families, Qwen2.5-7B and Llama-3.1-8B, across GSM8K, Countdown-cd4, and Trip Planning under deterministic and stochastic pass@k evaluation. The current evidence supports three provisional contributions: diffusion checkpoints are strongest in deterministic or pass@1 planning settings, autoregressive checkpoints overtake at larger k; per-question Pearson correlations indicate that failure-mode alignment is often organized more strongly by generation paradigm than by shared pretrained architecture; and prompt sensitivity differs by paradigm, with diffusion models stronger at zero-shot GSM8K while autoregressive models benefit more from few-shot examples.
+This thesis draft investigates whether chain-of-thought reasoning and planning can be rethought through diffusion language models. It compares LLaDA-8B and Dream-v0-7B with Qwen2.5-7B and Llama-3.1-8B across GSM8K, Countdown-cd4, and Trip Planning. The evaluation combines deterministic accuracy, stochastic pass@k, parser-controlled answer extraction, prompt-mode ablations, and per-question correlation analysis. The central finding is that diffusion language models are stronger in deterministic and low-k planning settings, while autoregressive models improve more under large-k sampling and can overtake at higher sample budgets. Prompt format and few-shot examples substantially affect the ranking, and per-question correlations suggest that the paradigms solve overlapping but meaningfully different subsets of problems. The resulting conclusion is not that diffusion language models simply replace autoregressive models, but that they change the evaluation trade-off and motivate hybrid or ensemble-style reasoning evaluation.
 \cleardoublepage
 
 \begin{spacing}{1}
@@ -73,6 +73,26 @@ This first thesis draft investigates whether chain-of-thought reasoning can be r
 \phantomsection
 \addcontentsline{toc}{section}{References}
 \begin{thebibliography}{99}
+
+\bibitem{vaswani2017attention}
+A. Vaswani \emph{et al.},
+``Attention Is All You Need,''
+\emph{Advances in Neural Information Processing Systems}, vol. 30, 2017.
+
+\bibitem{brown2020language}
+T. B. Brown \emph{et al.},
+``Language Models are Few-Shot Learners,''
+\emph{Advances in Neural Information Processing Systems}, vol. 33, 2020.
+
+\bibitem{wei2022chain}
+J. Wei \emph{et al.},
+``Chain-of-Thought Prompting Elicits Reasoning in Large Language Models,''
+\emph{Advances in Neural Information Processing Systems}, vol. 35, 2022.
+
+\bibitem{wang2023selfconsistency}
+X. Wang, J. Wei, D. Schuurmans, Q. Le, E. Chi, S. Narang, A. Chowdhery, and D. Zhou,
+``Self-Consistency Improves Chain of Thought Reasoning in Language Models,''
+\emph{International Conference on Learning Representations}, 2023.
 
 \bibitem{austin2021structured}
 J. Austin, D. D. Johnson, J. Ho, D. Tarlow, and R. van den Berg,
@@ -133,10 +153,10 @@ This appendix is included because the provided GIPPLab sample thesis contains an
 \toprule
 Category & Draft entry \\
 \midrule
-Tools used & ChatGPT was used to convert the Milestone 2 material into a LaTeX thesis draft, organize the project into a repository-style structure, and generate first-pass prose around the provided experimental results. \\
+Tools used & ChatGPT/Codex was used to audit the local evaluation repository, inspect parser and scoring code, generate thesis figures from JSON artifacts, and revise the LaTeX draft prose. \\
 Human responsibility & The author remains responsible for checking every claim, table value, citation, and interpretation before submission. \\
-Data and results & No new experimental numbers were invented. The tables and figure captions are based on the Milestone 2 material supplied by the author. \\
-Writing status & This is a first thesis draft. It contains draft framing, placeholders, and appendix material that should be revised before final submission. \\
+Data and results & No new experimental numbers were invented. The tables and figures are based on local JSON artifacts, Milestone 2 documents, and inspected repository code. \\
+Writing status & This remains a thesis draft. It now has real figures, parser documentation, and strengthened prose, but it still needs supervisor review and final polishing before submission. \\
 \bottomrule
 \end{tabularx}
 \end{table}

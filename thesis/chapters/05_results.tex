@@ -1,0 +1,32 @@
+\section{Results}
+
+Table~\ref{tab:cross-benchmark-summary} compresses the main empirical story before the benchmark-specific sections unpack it in detail.
+
+\begin{table}[!htbp]
+\centering
+\caption{Compact cross-benchmark summary of low-$k$ versus high-$k$ behavior. Percentages are computed directly from the canonical JSON result files.}
+\label{tab:cross-benchmark-summary}
+\footnotesize
+\begin{tabularx}{\textwidth}{L{2.7cm}Ycccc}
+\toprule
+\textbf{Condition} & \textbf{Best dLLM at pass@1} & \textbf{Best AR at pass@1} & \textbf{Best dLLM at pass@max} & \textbf{Best AR at pass@max} & \textbf{Ranking shift} \\
+\midrule
+GSM8K base & Dream 72.39 & Qwen 69.51 & Dream 97.66 & Qwen 100.00 & weak, saturating reversal \\
+GSM8K instruct & Dream 76.15 & Qwen 79.77 & LLaDA 99.22 & Qwen 100.00 & no low-$k$ dLLM lead \\
+Countdown base & LLaDA 14.29 & Qwen 4.04 & Dream 37.60 & Qwen 51.31 & strong reversal \\
+Countdown instruct & Dream 9.15 & Qwen 7.84 & Dream 32.26 & Llama 46.17 & strong reversal \\
+Trip Planning base & Dream 5.44 & Llama 2.45 & Dream 22.50 & Llama 25.50 & moderate reversal \\
+Trip Planning instruct & Dream 5.66 & Llama 1.71 & Dream 15.00 & Llama 21.00 & moderate reversal; flat Llama reaches 29.50 in the merged diagnostic figure \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+% Results subsections are split because this chapter carries most tables and figures.
+\input{chapters/05a_results_gsm8k}
+\input{chapters/05b_results_countdown}
+\input{chapters/05c_results_trip_planning}
+\input{chapters/05d_results_hyperparameters}
+\input{chapters/05e_results_parser_sensitivity}
+\input{chapters/05f_results_diversity}
+\input{chapters/05g_results_correlation_oracle}

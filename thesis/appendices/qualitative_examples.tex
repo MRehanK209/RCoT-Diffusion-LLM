@@ -1,0 +1,45 @@
+\section{Qualitative Examples}
+The following compact examples are extracted from the thesis generation JSON files.
+\subsection{Countdown-cd4 Base}
+\paragraph{dLLM-only solved}
+\textbf{Question.} \texttt{23,10,3,28,39}\\
+\textbf{LLaDA.} \texttt{23+10=33,33/3=11,11+28=39 Input: 60}\\
+\textbf{Qwen.} \texttt{23-10=13,3*28=84,13+84=97,39*2=7}
+\paragraph{AR-only solved}
+\textbf{Question.} \texttt{97,2,59,5,14}\\
+\textbf{Qwen.} \texttt{97-59=38,38/2=19,19-5=14 Input: 80,4}\\
+\textbf{LLaDA.} \texttt{97/2=48,59/5=34,48-34=14 Input: 97,}
+\paragraph{Both paradigms solved}
+\textbf{Question.} \texttt{57,61,22,15,41}\\
+\textbf{LLaDA.} \texttt{57+21=78,22+15=37,78-37=41 Input: 9}\\
+\textbf{Qwen.} \texttt{61+22=83,57-15=42,83-42=41 Input: 60}
+\paragraph{Neither paradigm solved}
+\textbf{Question.} \texttt{2,52,20,73,57}\\
+\textbf{LLaDA.} \texttt{52-2=50,73-20=53,50+53=57 Input: 5,}\\
+\textbf{Qwen.} \texttt{52-2=50,73-20=53,50+53=103 Input: 79}
+\subsection{Trip Planning Base}
+\paragraph{dLLM-only solved}
+\textbf{Question.} \texttt{Hamburg**London**Copenhagen**Tallinn**Vilnius**Zurich**Mykonos||5**2**3**3**5**5**2}\\
+\textbf{LLaDA.} \texttt{**Day 1-5:** Arriving in Hamburg and visit Hamburg for 5 days. **Day 5:** Fly from Hamburg to London. **Day 5-6:** Visit London for 2 days. **Day 6:** Fly from London to Copenhagen. **Day 6-8:** Visit Copenhagen for 3 da}\\
+\textbf{Qwen.} \texttt{Here is the trip plan for visiting the 7 European cities for 19 days: **Day 1-5:** Arriving in Hamburg and visit Hamburg for 5 days. **Day 5:** Fly from Hamburg to London. **Day 5-6:** Visit London for 2 days. **Day 6:*}
+\paragraph{AR-only solved}
+\textbf{Question.} \texttt{Athens**Mykonos**Nice**Edinburgh**Seville||5**2**6**2**2}\\
+\textbf{Qwen.} \texttt{Here is the trip plan for visiting the 5 European cities for 13 days: **Day 1-5:** Arriving in Athens and visit Athens for 5 days. **Day 5:** Fly from Athens to Mykonos. **Day 5-6:** Visit Mykonos for 2 days. **Day 6:**}\\
+\textbf{LLaDA.} \texttt{**Day 1-5:** Arriving in Athens and visit Athens for 5 days. **Day 5:** Fly from Athens to Mykonos. **Day 5-6:** Visit Mykonos for 2 days. **Day 6:** Fly from Mykonos to Edinburgh. **Day 6-7:** Visit Edinburgh for 2 days}
+\paragraph{Both paradigms solved}
+\textbf{Question.} \texttt{Riga**Edinburgh**Seville**Paris**Naples||4**7**4**6**6}\\
+\textbf{LLaDA.} \texttt{**Day 1-4:** Arriving in Riga and visit Riga for 4 days. **Day 4:** Fly from Riga to Edinburgh. **Day 4-9:** Visit Edinburgh for 7 days. **Day 9:** Fly from Edinburgh to Seville. **Day 9-12:** Visit Seville for 4 days. *}\\
+\textbf{Qwen.} \texttt{Here is the trip plan for visiting the 5 European cities for 23 days: **Day 1-4:** Arriving in Edinburgh and visit Edinburgh for 7 days. **Day 4:** Fly from Edinburgh to Riga. **Day 4-7:** Visit Riga for 4 days. **Day 7}
+\paragraph{Neither paradigm solved}
+\textbf{Question.} \texttt{Riga**Hamburg**Bucharest**Naples**Nice**Reykjavik**Prague**Florence**Madrid**Seville||2**4**2**4**4**3**2**4**5**4}\\
+\textbf{LLaDA.} \texttt{Here is the trip plan for visiting the 10 European cities for 25 days: **Day 1-5:** Arriving in Hamburg and visit Hamburg for 4 days. **Day 5:** Fly from Hamburg to Madrid. **Day 5-9:** Visit Madrid for 5 days. **Day 9:}\\
+\textbf{Qwen.} \texttt{1. Arriving in Madrid and visit Madrid for 5 days. 2. Fly from Madrid to Reykjavik. 3. Visit Reykjavik for 3 days. 4. Fly from Reykjavik to Prague. 5. Visit Prague for 2 days. 6. Fly from Prague to Florence. 7. Visit Flo}
+\subsection{GSM8K parser-sensitivity example}
+\textbf{Question.} \texttt{Sara wants to buy herself a new jacket and 2 pairs of shoes. The jacket she wants costs \$30 and each pair of shoes cost \$20. Sara babysits the neighbor's kids 4 times, earning \$5 e}\\
+\textbf{Raw sample.} \texttt{<reasoning> First, we need to determine how much money Sara earns from babysitting. She babysits 4 times, earning \$5 each time, so she earns 4 * \$5 = \$20 from babysitting. Next, we need to determine how much money Sara already has saved. She had \$10 saved bef}
+\subsection{Countdown parser-failure example}
+\textbf{Question.} \texttt{97,2,59,5,14}\\
+\textbf{Raw sample.} \texttt{97/2=48,59/5=34,48-34=14 Input: 97,}
+\subsection{Trip Planning parser-failure example}
+\textbf{Question.} \texttt{Riga**Hamburg**Bucharest**Naples**Nice**Reykjavik**Prague**Florence**Madrid**Seville||2**4**2**4**4**3**2**4**5**4}\\
+\textbf{Raw sample.} \texttt{Here is the trip plan for visiting the 10 European cities for 25 days: **Day 1-5:** Arriving in Hamburg and visit Hamburg for 4 days. **Day 5:** Fly from Hamburg to Madrid. **Day 5-9:** Visit Madrid for 5 days. **Day 9:** Fly from Madrid to Nice. **Day 9-12}

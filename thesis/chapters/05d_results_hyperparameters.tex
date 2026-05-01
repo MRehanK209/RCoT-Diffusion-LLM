@@ -1,0 +1,30 @@
+\subsection{RQ1 control: hyperparameter analysis before paradigm comparison}
+Before the thesis pivoted from tuning to paradigm comparison, the repository ran a GSM8K sweep over generation length, diffusion steps, and block length for LLaDA and Dream, plus generation-length sweeps for Qwen. The sweep confirms that tuning matters, but it does not erase the paradigm-level pass@k question because even well-tuned diffusion runs and autoregressive runs change rank under different sampling budgets.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.78\textwidth]{images/hyperparameter_summary.pdf}
+\caption{GSM8K sweep summary: best pass@1 and best high-$k$ values. Several diffusion configurations tie at pass@128, so the table reports representative tied configurations.}
+\label{fig:hyperparams}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\caption{Best GSM8K sweep configurations recomputed from raw generation JSONs.}
+\label{tab:hyperparams}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l l c c c}
+\toprule
+\textbf{Model} & \textbf{Configuration file} & \textbf{pass@1} & \textbf{pass@128} & \textbf{Wall time (min)} \\
+\midrule
+LLaDA best pass@1 & \texttt{\detokenize{GSAI-ML_LLaDA-8B-Base_256_256_128_0.7_4_128_128_generations_fast_dllm.json}} & 0.710083 & 0.976562 & 14.541 \\
+LLaDA best pass@128 tie & \texttt{\detokenize{GSAI-ML_LLaDA-8B-Base_256_128_256_0.7_4_128_128_generations_fast_dllm.json}} & 0.705322 & 0.992188 & 11.670 \\
+Dream best pass@1 / pass@128 tie & \texttt{\detokenize{Dream-org_Dream-v0-Base-7B_256_256_32_0.7_4_128_128_generations_fast_dllm.json}} & 0.706726 & 0.992188 & 12.072 \\
+Dream pass@128 tie & \texttt{\detokenize{Dream-org_Dream-v0-Base-7B_256_64_32_0.7_4_128_128_generations_fast_dllm.json}} & 0.706604 & 0.992188 & 11.388 \\
+Qwen best pass@1 / pass@128 & \texttt{\detokenize{Qwen_Qwen2.5-7B_256_0.7_4_128_128_generations_vllm.json}} & 0.729675 & 1.000000 & 5.719 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Generation length is the most important practical parameter in the sweep: 256-token generations dominate the strongest configurations. Diffusion step count has diminishing returns, and block length interacts with both quality and latency. The main thesis therefore does not attempt to declare a universally best diffusion hyperparameter setting; it asks how the paradigms compare under controlled, documented configurations.

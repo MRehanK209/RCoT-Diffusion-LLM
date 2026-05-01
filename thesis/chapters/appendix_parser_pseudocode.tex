@@ -1,0 +1,61 @@
+\section{Parser Pseudocode}
+
+\subsection{GSM8K Answer Extraction}
+\begin{verbatim}
+gold_answer(text):
+    match = regex("#### <number>").search(text)
+    return float(remove_commas(match.number))
+
+generated_answer(model_output):
+    boxed = last_boxed_or_fboxed_expression(model_output)
+    if boxed is None:
+        return None
+    try:
+        return float(boxed)
+    except ValueError:
+        return boxed.strip()
+
+is_correct(pred, gold):
+    if pred and gold are numeric:
+        return abs(pred - gold) < 1e-4
+    return normalized_string(pred) == normalized_string(gold)
+\end{verbatim}
+
+\subsection{Countdown Expression Validation}
+\begin{verbatim}
+score_countdown(input, prediction):
+    numbers, target = parse_input(input)
+    available = Counter(numbers)
+    equations = parse_leading_equations(first_line(prediction))
+
+    for equation in equations:
+        left, right = split_at_equals(equation)
+        left = normalize_operators(left)
+        right_value = parse_number(right)
+        if restricted_eval(left) != right_value:
+            return false
+        consume_operands_from_counter(left, available)
+        available[right_value] += 1
+
+    consume_target(target, available)
+    return all_counts_zero(available)
+           and final_rhs == target
+\end{verbatim}
+
+\subsection{Trip Planning Plan Validation}
+\begin{verbatim}
+parse_trip_plan(response):
+    total_days = first_line_matching("European cities for N days")
+    visit_ranges = scan_lines_for_day_ranges(response)
+    flights = scan_lines_for("Day D ... from City to City")
+    cities = [first_departure_city] + all_arrival_cities
+    flight_days = [1] + flight_days + [total_days]
+    stays = differences_between_adjacent_flight_days_plus_one()
+    return zip(cities, stays)
+
+score_trip_plan(gold_cities, gold_durations, response):
+    parsed = parse_trip_plan(clean_response(response))
+    if parsed is empty:
+        return false
+    return parsed == ordered gold cities and durations
+\end{verbatim}

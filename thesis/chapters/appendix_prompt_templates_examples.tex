@@ -1,0 +1,42 @@
+\section{Prompt Templates and Qualitative Examples}
+
+\subsection{Prompt-mode summary}
+\begin{verbatim}
+GSM8K base_native / instruct_flat:
+  [system prompt with boxed-answer requirement]
+  Question: <question>
+  Answer:
+
+GSM8K instruct_templated:
+  system: "You are a math expert ... Wrap the final answer in \boxed{}."
+  user/assistant few-shot turns
+  user: "Question: <question>\nAnswer:"
+
+Countdown base_native / instruct_flat:
+  "Given 5 numbers, use +-*/ to operate over the first four numbers
+   to achieve the fifth number."
+  base suffix: "Output ONLY comma-separated equations ..."
+  instruct suffix: "No words, no explanation, no retries ..."
+
+Trip Planning base_native / instruct_flat:
+  TASK: ... <few-shot travel-planning prompt> ...
+  SOLUTION:
+
+Trip Planning instruct_templated:
+  single user chat turn containing the same TASK ... SOLUTION: prompt
+\end{verbatim}
+
+\subsection{Benchmark-specific answer requirements}
+\begin{verbatim}
+GSM8K:
+  final answer expected in \boxed{...}
+
+Countdown-cd4:
+  comma-separated binary equation chain such as
+  a+b=c,c-d=e,e*f=target
+
+Trip Planning:
+  total-day statement, day ranges, and "Fly from City to City" lines
+\end{verbatim}
+
+\input{appendices/qualitative_examples.tex}
