@@ -96,7 +96,8 @@ def _normalize_countdown_prediction(pred):
         .replace("×", "*")
         .replace("÷", "/")
     )
-    cleaned = cleaned.splitlines()[0].strip()
+    lines = cleaned.splitlines()
+    cleaned = lines[0].strip() if lines else cleaned.strip()
 
     for marker in _COUNTDOWN_EOS_MARKERS:
         if marker in cleaned:
