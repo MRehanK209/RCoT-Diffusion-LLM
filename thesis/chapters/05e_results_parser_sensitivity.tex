@@ -1,18 +1,13 @@
-\subsection{RQ5: Parser sensitivity and failure rates}
-RQ5 asks how much of the measured story depends on the parser layer. The high-level answer is benchmark-dependent. On GSM8K and Countdown, outright parser crashes are almost nonexistent; the more important issue is output-format compliance. On Trip Planning, malformed plans can dominate the error profile, especially for base prompts and for Llama-Instruct under the templated prompt. Figure~\ref{fig:parser-failure-rates} and Table~\ref{tab:parser-summary} summarize the main rates; the full benchmark-model breakdowns are retained in the appendix CSV exports.
+\subsection{Parser sensitivity and failure rates}
+\label{sec:parser-results}
+
+The measured pass@k story depends on the parser layer, but the dependence is benchmark-specific. On GSM8K and Countdown, outright parser crashes are almost nonexistent; the more important issue is output-format compliance. On Trip Planning, malformed plans can dominate the error profile, especially for base prompts and for Llama-Instruct under the templated prompt. Figure~\ref{fig:parser-failure-rates} and Table~\ref{tab:parser-summary} summarize the main rates.
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.9\textwidth]{images/parser_failure_rates.pdf}
 \caption{Canonical parser failure rates for the six main comparison conditions. GSM8K and Countdown almost never fail at the parser-entry stage, while Trip Planning can be dominated by malformed outputs.}
 \label{fig:parser-failure-rates}
-\end{figure}
-
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.98\textwidth]{images/parser_sensitivity_summary.pdf}
-\caption{Parser sensitivity diagnostics. Left: GSM8K samples rescued by an alternate final-number fallback. Middle: Countdown alternate expression parser contributes essentially no rescued correct samples. Right: malformed-plan rates remain large for several Trip Planning runs.}
-\label{fig:parser-sensitivity}
 \end{figure}
 
 \begin{table}[!htbp]
@@ -25,13 +20,13 @@ RQ5 asks how much of the measured story depends on the parser layer. The high-le
 \textbf{Condition} & \textbf{Avg. dLLM parse-fail} & \textbf{Avg. AR parse-fail} & \textbf{Main observation} \\
 \midrule
 GSM8K base & 0.01 & 0.02 & Parser crashes are rare; the bigger issue is box-format mismatch, especially for Qwen and Llama. \\
-GSM8K instruct & 0.01 & 0.00 & Alternate numeric fallback would rescue 3.24 percentage points for LLaDA and 4.03 points for Qwen without changing canonical thesis scores. \\
+GSM8K instruct & 0.01 & 0.00 & Alternate numeric fallback would rescue $3.24$ percentage points for LLaDA and $4.03$ for Qwen without changing canonical thesis scores. \\
 Countdown base & 0.00 & 0.00 & Parsing is robust; the dominant failure is invalid number reuse rather than syntax. \\
 Countdown instruct & 0.04 & 0.00 & Same pattern as base: wrong-number-use dominates, not parser crashes. \\
 Trip Planning base & 54.37 & 39.35 & Malformed itineraries are common; missing total-day lines dominate LLaDA, Dream, and Llama base outputs. \\
-Trip Planning instruct & 0.47 & 34.00 & Chat formatting almost eliminates Dream/LLaDA parse failures but Llama-Instruct templated still fails to produce parseable plans on 68.0\% of samples. \\
+Trip Planning instruct & 0.47 & 34.00 & Chat formatting almost eliminates Dream/LLaDA parse failures but Llama-Instruct templated still fails to produce parseable plans on $68.0\%$ of samples. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The sensitivity analysis is deliberately kept separate from the canonical thesis numbers. On GSM8K, a more permissive fallback parser recovers correct unboxed answers for all four models, but the effect is largest for the autoregressive checkpoints: Qwen gains 229 additional correct samples in the base 128-sample run and 661 in the instruct-templated run, while LLaDA gains 531 in the instruct-templated run. On Countdown, by contrast, an alternate single-expression parser does not rescue any additional correct samples from the canonical files; the main barrier is semantic invalidity, not chain parsing. On Trip Planning, the dominant parser effect is whether the model emits the required itinerary scaffold at all.
+The sensitivity analysis is deliberately kept separate from the canonical thesis numbers. On GSM8K, a more permissive fallback parser recovers correct unboxed answers for all four models, but the effect is largest for the autoregressive checkpoints: Qwen gains $229$ additional correct samples in the base $128$-sample run and $661$ in the instruct-templated run, while LLaDA gains $531$ in the instruct-templated run. On Countdown, by contrast, an alternate single-expression parser does not rescue any additional correct samples from the canonical files; the main barrier is semantic invalidity, not chain parsing. On Trip Planning, the dominant parser effect is whether the model emits the required itinerary scaffold at all.

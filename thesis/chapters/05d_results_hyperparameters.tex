@@ -1,30 +1,26 @@
-\subsection{RQ1 control: hyperparameter analysis before paradigm comparison}
-Before the thesis pivoted from tuning to paradigm comparison, the repository ran a GSM8K sweep over generation length, diffusion steps, and block length for LLaDA and Dream, plus generation-length sweeps for Qwen. The sweep confirms that tuning matters, but it does not erase the paradigm-level pass@k question because even well-tuned diffusion runs and autoregressive runs change rank under different sampling budgets.
+\subsection{Hyperparameter sweep and step-invariance under fast-dLLM}
+\label{sec:results-hyperparameters}
 
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.78\textwidth]{images/hyperparameter_summary.pdf}
-\caption{GSM8K sweep summary: best pass@1 and best high-$k$ values. Several diffusion configurations tie at pass@128, so the table reports representative tied configurations.}
-\label{fig:hyperparams}
-\end{figure}
+A $25$-configuration GSM8K sweep over generation length $L\in\{128, 256\}$, denoising steps $S\in\{32, 64, 128, 256\}$, and block length $B\in\{32, 64, 128, 256\}$ was run for both diffusion families before the paradigm comparison was finalized. Two findings from the sweep are relevant to the rest of the thesis.
+
+\paragraph{Step count is a no-op for Dream under fast-dLLM.} At fixed $L=256, B=32$, Dream's pass@1 is $0.707$, $0.707$, $0.705$, $0.707$ for $S\in\{32, 64, 128, 256\}$, with wall times of $11.8$, $11.4$, $11.7$, and $12.1$ minutes. An eightfold change in nominal step count produces neither a quality nor a wall-time effect, and the same flat profile holds across every $(L, B)$ cell. LLaDA behaves oppositely: at $L=256, B=128$ its pass@1 is $0.076$, $0.397$, $0.699$, $0.710$ across the same $S$ range, and wall time scales from $3.7$ to $14.5$ minutes. Fast-dLLM therefore appears to collapse Dream's denoising into a step-count-independent operation, while LLaDA's fast-dLLM path still performs roughly $S$ sequential refinement steps. Reported Dream evaluations elsewhere in the literature that use $S=L$ are consistent with this view but spend more compute than necessary.
+
+\paragraph{Equal-wall-time quality is comparable across diffusion families.} Table~\ref{tab:hyperparams} lists the cheapest configuration each diffusion model uses to reach pass@1$\approx 0.70$. Dream-Base achieves pass@1$=0.707$ in $11.8$ minutes with $S=32$; LLaDA-Base achieves $0.699$ in $11.7$ minutes with $S=128$. The two families reach the same quality in essentially the same wall time, but trade off the $(S, B)$ knobs in opposite directions. Qwen-Base reaches pass@1$=0.730$ in $5.7$ minutes via vLLM, so the diffusion families remain slower than vLLM at equal quality on saturated math, but the wall-time gap inside the diffusion family disappears once budgets are matched.
 
 \begin{table}[!htbp]
 \centering
-\caption{Best GSM8K sweep configurations recomputed from raw generation JSONs.}
+\caption{GSM8K sweep: cheapest configuration reaching pass@1$\approx 0.70$ for each model. Generation length, diffusion steps, and block length are sweep parameters; vLLM does not expose $S$ or $B$.}
 \label{tab:hyperparams}
 \scriptsize
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{l l c c c}
+\begin{tabular}{l l c c c c c c}
 \toprule
-\textbf{Model} & \textbf{Configuration file} & \textbf{pass@1} & \textbf{pass@128} & \textbf{Wall time (min)} \\
+\textbf{Model} & \textbf{Backend} & \textbf{$L$} & \textbf{$S$} & \textbf{$B$} & \textbf{pass@1} & \textbf{pass@128} & \textbf{Wall time (min)} \\
 \midrule
-LLaDA best pass@1 & \texttt{\detokenize{GSAI-ML_LLaDA-8B-Base_256_256_128_0.7_4_128_128_generations_fast_dllm.json}} & 0.710083 & 0.976562 & 14.541 \\
-LLaDA best pass@128 tie & \texttt{\detokenize{GSAI-ML_LLaDA-8B-Base_256_128_256_0.7_4_128_128_generations_fast_dllm.json}} & 0.705322 & 0.992188 & 11.670 \\
-Dream best pass@1 / pass@128 tie & \texttt{\detokenize{Dream-org_Dream-v0-Base-7B_256_256_32_0.7_4_128_128_generations_fast_dllm.json}} & 0.706726 & 0.992188 & 12.072 \\
-Dream pass@128 tie & \texttt{\detokenize{Dream-org_Dream-v0-Base-7B_256_64_32_0.7_4_128_128_generations_fast_dllm.json}} & 0.706604 & 0.992188 & 11.388 \\
-Qwen best pass@1 / pass@128 & \texttt{\detokenize{Qwen_Qwen2.5-7B_256_0.7_4_128_128_generations_vllm.json}} & 0.729675 & 1.000000 & 5.719 \\
+Dream-Base & fast-dLLM & 256 & 32 & 32 & 0.707 & 0.992 & 11.8 \\
+LLaDA-Base & fast-dLLM & 256 & 128 & 128 & 0.699 & 0.992 & 11.7 \\
+Qwen-Base & vLLM & 256 & --- & --- & 0.730 & 1.000 & 5.7 \\
 \bottomrule
-\end{tabular}}
+\end{tabular}
 \end{table}
 
-Generation length is the most important practical parameter in the sweep: 256-token generations dominate the strongest configurations. Diffusion step count has diminishing returns, and block length interacts with both quality and latency. The main thesis therefore does not attempt to declare a universally best diffusion hyperparameter setting; it asks how the paradigms compare under controlled, documented configurations.
+The sweep confirms that generation length is the dominant quality lever. Step count is decisive only for LLaDA, and Dream's effective step count is bounded below by the fast-dLLM scheduler regardless of the user-set parameter. Section~\ref{sec:results-countdown} therefore reports paradigm comparisons at fixed dataset-appropriate generation lengths and treats the diffusion-step parameter as a mostly latent backend choice.

@@ -1,37 +1,11 @@
 \section{Introduction}
+\label{sec:introduction}
 Autoregressive large language models are the dominant reference point for contemporary reasoning and planning systems. Their decoding procedure is simple and powerful: generate the next token conditioned on all previous tokens, repeat until a complete answer is produced, and optionally sample multiple completions when the first answer is uncertain. This left-to-right interface has become the default way to elicit chain-of-thought reasoning, to run few-shot prompts, and to evaluate large language models on mathematical and planning benchmarks \cite{vaswani2017attention,brown2020language,wei2022chain,wang2023selfconsistency}.
 
 This thesis asks whether that default should be rethought through diffusion language models. Diffusion language models do not have to commit to a final answer one token at a time. Masked or discrete diffusion systems initialize a partially masked sequence and refine it over multiple denoising steps, which gives them a different route to global coherence \cite{austin2021structured,nie2025llada,ye2025dream}. The central question is therefore not only whether diffusion language models can solve reasoning problems, but whether they behave differently enough that the evaluation protocol changes the conclusion.
 
-The empirical evidence in this draft shows that deterministic accuracy alone is insufficient. On the planning benchmarks, diffusion models are stronger in deterministic and low-$k$ settings, but autoregressive models improve faster when many stochastic samples are allowed. In other words, the ranking depends on whether the evaluator asks for one strong solution or permits search over many candidate solutions. This is especially clear on Countdown-cd4, where diffusion models lead at pass@1 and autoregressive models lead at pass@128.
+The empirical evidence in this thesis shows that deterministic accuracy alone is insufficient. On the planning benchmarks, diffusion models are stronger in deterministic and low-$k$ settings, but autoregressive models improve faster when many stochastic samples are allowed. The ranking therefore depends on whether the evaluator asks for one strong solution or permits search over many candidate solutions. This is especially clear on Countdown-cd4, where diffusion models lead at pass@1 and autoregressive models lead at pass@128.
 
-The thesis makes five contributions. First, it provides a controlled comparison of LLaDA, Dream, Qwen2.5, and Llama 3.1 at similar model scale \cite{nie2025llada,ye2025dream,qwen2024qwen25,grattafiori2024llama}. Second, it evaluates the models across GSM8K, Countdown-cd4, and Trip Planning, covering arithmetic reasoning, constrained arithmetic planning, and natural-language itinerary planning \cite{cobbe2021gsm8k,xie2024travelplanner}. Third, it reports both deterministic evaluation and stochastic pass@k evaluation. Fourth, it uses parser-controlled answer extraction and documents the task-specific validity checks in the evaluation code. Fifth, it adds a per-question correlation analysis showing that failure-mode alignment often depends strongly on generation paradigm, not only on checkpoint family or backbone.
+\paragraph{Contributions.} The thesis makes three contributions. First, it provides a controlled paradigm comparison of LLaDA, Dream, Qwen2.5, and Llama~3.1 at similar model scale, across GSM8K, Countdown-cd4, and Trip Planning, under both deterministic and stochastic pass@k evaluation \cite{nie2025llada,ye2025dream,qwen2024qwen25,grattafiori2024llama,cobbe2021gsm8k,xie2024travelplanner}. Second, it documents a pass@k ranking reversal on the planning benchmarks: diffusion models lead at pass@1 and autoregressive models lead at pass@128, reversing the ordering reported by deterministic evaluation. Third, it adds a per-question correlation analysis showing that failure-mode alignment depends more strongly on generation paradigm than on shared pretrained architecture, including the case where Dream and Qwen share a backbone but Dream aligns more with LLaDA on the constrained planning benchmark. Methodological choices about parsers, prompt templating, and few-shot count are treated as first-class experimental variables throughout the results, since they materially affect the conclusions on every benchmark.
 
-This gap matters because parsers are not implementation details; they are part of the measurement system. A model can produce mathematically correct reasoning but still lose credit if it misses a required boxed answer, emits an invalid Countdown equation chain, or writes a malformed itinerary. Any thesis that compares generation paradigms on reasoning and planning tasks therefore has to treat answer extraction and validity checking as first-class methodological choices rather than invisible post-processing.
-
-\paragraph{Research questions.}
-\begin{itemize}
-    \item \textbf{RQ1:} Do diffusion LLMs outperform autoregressive LLMs in deterministic or low-$k$ reasoning and planning?
-    \item \textbf{RQ2:} Does stochastic pass@k evaluation reverse the model ranking?
-    \item \textbf{RQ3:} How sensitive are the conclusions to prompt mode, chat templates, and few-shot examples?
-    \item \textbf{RQ4:} Do diffusion and autoregressive models solve the same questions, or do they have complementary failure modes?
-    \item \textbf{RQ5:} How much do task-specific parsers and output-format requirements influence measured performance?
-\end{itemize}
-
-\begin{table}[!htbp]
-\centering
-\caption{Research-question-to-evidence map.}
-\label{tab:rq-evidence-map}
-\footnotesize
-\begin{tabularx}{\textwidth}{L{1.1cm}L{3.0cm}Y Y}
-\toprule
-\textbf{RQ} & \textbf{Claim tested} & \textbf{Main evidence} & \textbf{Caveat} \\
-\midrule
-RQ1 & Diffusion models may be stronger in single-shot reasoning/planning. & Deterministic comparisons, pass@1 columns, and low-$k$ regions of Figures~\ref{fig:countdown-base} and~\ref{fig:trip-passk}. & GSM8K is partly saturated and Trip Planning is parser-heavy. \\
-RQ2 & Large-$k$ search may reverse the ranking. & Countdown and Trip Planning pass@k curves, cross-benchmark summary in Table~\ref{tab:cross-benchmark-summary}, diversity metrics in Figure~\ref{fig:diversity-gain}. & pass@k depends on sample budget and parser-valid output rates. \\
-RQ3 & Prompt format and few-shot examples can change the conclusion. & GSM8K 0-shot/4-shot tables, templated-versus-flat comparison in Figure~\ref{fig:gsm8k-prompt}, Countdown prompt diagnostic in Figure~\ref{fig:countdown-prompt}. & Prompt-mode effects mix capability with format mismatch. \\
-RQ4 & Paradigms may solve overlapping but different subsets of questions. & Correlation matrices, oracle-union analysis in Table~\ref{tab:oracle-summary}, overlap figure~\ref{fig:oracle-overlap}. & Oracle unions are upper bounds, not deployable ensembles. \\
-RQ5 & Parser choice can change measured accuracy. & Parser-layer figure~\ref{fig:parser-pipeline}, parser-failure heatmap~\ref{fig:parser-failure-rates}, GSM8K sensitivity table~\ref{tab:parser-summary}. & Canonical thesis numbers remain tied to the official evaluation path. \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\paragraph{Roadmap.} Chapter~\ref{sec:related-work} reviews diffusion language models, autoregressive baselines, and the pass@k methodology. Chapter~\ref{sec:model-background} develops the concentration-versus-diversity hypothesis that motivates the empirical comparison. Chapter~\ref{sec:methodology} describes the unified evaluation pipeline, the four model families, the three benchmarks, and the prompt-mode and parser conventions. Chapter~\ref{sec:results} presents the benchmark results in the order in which they support the thesis: GSM8K as a saturating sanity check, Countdown-cd4 as the central pass@k reversal, Trip Planning as a natural-language planning extension, the diffusion hyperparameter sweep, parser sensitivity, sampling diversity, and per-question correlation with oracle complementarity. Chapter~\ref{sec:discussion} synthesizes these into a paradigm-level reading; Chapter~\ref{sec:limitations} states the threats to validity; Chapter~\ref{sec:conclusion} closes with the next experimental step. Appendices contain the prompt templates, parser pseudocode, qualitative samples, and the detailed per-condition tables that support the main-text claims.

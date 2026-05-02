@@ -1,0 +1,237 @@
+\section{Detailed Per-Condition Result Tables}
+\label{sec:appendix-detailed-results}
+
+This appendix collects the per-condition tables that support the summary numbers in the main text. The main-text figures and tables in Chapter~\ref{sec:results} report only the headline rows; the full breakdowns for GSM8K, Countdown-cd4, Trip Planning, the per-question correlation matrices, and the Countdown prompt-mode diagnostic are reproduced here for traceability.
+
+\subsection{GSM8K base and instruct pass@k}
+\label{sec:appendix-gsm8k}
+
+\begin{table}[!htbp]
+\centering
+\caption[GSM8K base 0-shot pass@k]{GSM8K base 0-shot pass@k, $n=128$, temperature $=0.7$. Llama-Base pass@1 is suppressed by base-checkpoint format mismatch on a math benchmark with no chat template; pass@128 recovers to $1.000$, and Llama-Instruct templated reaches pass@1$=0.782$ on the same benchmark (Table~\ref{tab:gsm8k-instruct-format}).}
+\label{tab:gsm8k-base-zero}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} & \textbf{128} \\
+\midrule
+LLaDA-Base & 0.631 & 0.750 & 0.827 & 0.880 & 0.917 & 0.942 & 0.964 & 0.984 \\
+Dream-Base & 0.724 & 0.828 & 0.889 & 0.923 & 0.944 & 0.958 & 0.969 & 0.977 \\
+Qwen-Base  & 0.709 & 0.859 & 0.929 & 0.964 & 0.986 & 0.997 & 1.000 & 1.000 \\
+Llama-Base & 0.143 & 0.259 & 0.430 & 0.636 & 0.818 & 0.930 & 0.981 & 1.000 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{GSM8K base 4-shot pass@k, $n=16$, temperature $=0.7$.}
+\label{tab:gsm8k-base-four}
+\scriptsize
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} \\
+\midrule
+LLaDA-Base & 0.665 & 0.779 & 0.843 & 0.881 & 0.898 \\
+Dream-Base & 0.713 & 0.831 & 0.897 & 0.928 & 0.938 \\
+Qwen-Base  & 0.723 & 0.866 & 0.935 & 0.967 & 0.984 \\
+Llama-Base & 0.145 & 0.259 & 0.426 & 0.626 & 0.805 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{GSM8K instruct pass@k at 0-shot and 4-shot, $n=16$, temperature $=0.7$. Diffusion instruct models lead at 0-shot; autoregressive instruct models close the gap with 4-shot examples.}
+\label{tab:gsm8k-instruct-zero-four}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Setting} & \textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} \\
+\midrule
+0-shot & LLaDA-Instruct & 0.749 & 0.858 & 0.912 & 0.941 & 0.961 \\
+0-shot & Dream-Instruct & 0.734 & 0.845 & 0.905 & 0.943 & 0.969 \\
+0-shot & Qwen-Instruct  & 0.534 & 0.677 & 0.791 & 0.871 & 0.922 \\
+0-shot & Llama-Instruct & 0.488 & 0.623 & 0.737 & 0.823 & 0.879 \\
+4-shot & LLaDA-Instruct & 0.775 & 0.880 & 0.937 & 0.967 & 0.980 \\
+4-shot & Dream-Instruct & 0.761 & 0.855 & 0.909 & 0.938 & 0.953 \\
+4-shot & Qwen-Instruct  & 0.789 & 0.872 & 0.916 & 0.941 & 0.961 \\
+4-shot & Llama-Instruct & 0.782 & 0.879 & 0.939 & 0.970 & 0.984 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Countdown-cd4 prompt-mode diagnostic}
+\label{sec:appendix-countdown-prompt}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown prompt-mode diagnostic from the earlier smaller run. Absolute numbers are not directly comparable to the canonical refreshed Countdown tables in the main text because of differing generation length and evaluation set; only within-model templated/flat comparisons are meaningful.}
+\label{tab:countdown-prompt-diagnostic}
+\scriptsize
+\begin{tabularx}{\textwidth}{Ycc}
+\toprule
+\textbf{Model / prompt} & \textbf{pass@1} & \textbf{pass@128} \\
+\midrule
+LLaDA-Base & 0.029 & 0.068 \\
+LLaDA-Instruct templated & 0.028 & 0.064 \\
+LLaDA-Instruct flat & 0.028 & 0.051 \\
+Dream-Base & 0.019 & 0.104 \\
+Dream-Instruct templated & 0.013 & 0.066 \\
+Dream-Instruct flat & 0.018 & 0.098 \\
+Qwen-Base & 0.009 & 0.250 \\
+Qwen-Instruct templated & 0.007 & 0.037 \\
+Qwen-Instruct flat & 0.010 & 0.119 \\
+Llama-Base & 0.029 & 0.512 \\
+Llama-Instruct templated & 0.063 & 0.480 \\
+Llama-Instruct flat & 0.050 & 0.484 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Trip Planning deterministic configuration ranking}
+\label{sec:appendix-trip-deterministic}
+
+\begin{table}[!htbp]
+\centering
+\caption{Trip Planning deterministic comparison (greedy, $n=1$): top-ten configurations across model family, backend, and block size.}
+\label{tab:trip-deterministic-full}
+\scriptsize
+\begin{tabularx}{\textwidth}{Yc}
+\toprule
+\textbf{Model / variant} & \textbf{Accuracy} \\
+\midrule
+Dream-Instruct [bl=256] [dllm] & 0.150 \\
+Dream-Base [bl=256] [dllm] & 0.145 \\
+Dream-Base [bl=32] [fast-dllm] & 0.135 \\
+Dream-Instruct [flat] [bl=32] [fast-dllm] & 0.125 \\
+LLaDA-Base [bl=256] [dllm] & 0.115 \\
+Llama-Instruct [flat] [vllm] & 0.080 \\
+LLaDA-Instruct [bl=256] [dllm] & 0.080 \\
+Llama-Base [vllm] & 0.025 \\
+Qwen-Instruct [vllm] & 0.015 \\
+Qwen-Base [vllm] & 0.015 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Per-question correlation matrices}
+\label{sec:appendix-correlation}
+
+The summary in Section~\ref{sec:results-correlation} reports within-paradigm and strongest cross-paradigm correlations only. The full pairwise matrices for the six conditions are reproduced below for completeness.
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown Base per-question correlations.}
+\label{tab:countdown-base-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+LLaDA-Base vs Dream-Base & dLLM--dLLM & 0.6382 & $1.4\times10^{-114}$ \\
+Qwen-Base vs Llama-Base & AR--AR & 0.6149 & $3.1\times10^{-104}$ \\
+Dream-Base vs Qwen-Base & dLLM--AR, shared backbone lineage & 0.5718 & $3.5\times10^{-87}$ \\
+LLaDA-Base vs Qwen-Base & dLLM--AR & 0.5342 & $2.8\times10^{-74}$ \\
+LLaDA-Base vs Llama-Base & dLLM--AR & 0.4580 & $1.3\times10^{-52}$ \\
+Dream-Base vs Llama-Base & dLLM--AR & 0.4432 & $5.6\times10^{-49}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Countdown Instruct per-question correlations.}
+\label{tab:countdown-inst-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.4345 & $6.1\times10^{-47}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR & 0.4062 & $1.1\times10^{-40}$ \\
+Qwen-Inst vs Llama-Inst & AR--AR & 0.4039 & $3.3\times10^{-40}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.1475 & $3.1\times10^{-6}$ \\
+LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.1464 & $3.6\times10^{-6}$ \\
+LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.0867 & $6.3\times10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{GSM8K Base per-question correlations.}
+\label{tab:gsm8k-base-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+LLaDA-Base vs Dream-Base & dLLM--dLLM & 0.6291 & $1.8\times10^{-15}$ \\
+Dream-Base vs Qwen-Base & dLLM--AR, shared backbone lineage & 0.6189 & $6.9\times10^{-15}$ \\
+LLaDA-Base vs Qwen-Base & dLLM--AR & 0.4907 & $4.1\times10^{-9}$ \\
+LLaDA-Base vs Llama-Base & dLLM--AR & 0.4316 & $3.7\times10^{-7}$ \\
+Dream-Base vs Llama-Base & dLLM--AR & 0.3510 & $4.9\times10^{-5}$ \\
+Qwen-Base vs Llama-Base & AR--AR & 0.3204 & $2.3\times10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{GSM8K Instruct per-question correlations.}
+\label{tab:gsm8k-inst-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Qwen-Inst vs Llama-Inst & AR--AR & 0.6638 & $1.4\times10^{-17}$ \\
+LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.6550 & $5.0\times10^{-17}$ \\
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.6398 & $4.3\times10^{-16}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.5671 & $3.0\times10^{-12}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR, shared backbone lineage & 0.5598 & $6.5\times10^{-12}$ \\
+LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.4847 & $6.8\times10^{-9}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Trip Planning Base per-question correlations.}
+\label{tab:trip-base-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Qwen-Base vs Llama-Base & AR--AR & 0.7061 & $1.7\times10^{-31}$ \\
+LLaDA-Base vs Llama-Base & dLLM--AR & 0.5394 & $1.7\times10^{-16}$ \\
+LLaDA-Base vs Qwen-Base & dLLM--AR & 0.5158 & $5.5\times10^{-15}$ \\
+Dream-Base vs Qwen-Base & dLLM--AR, shared backbone lineage & 0.4829 & $4.4\times10^{-13}$ \\
+Dream-Base vs Llama-Base & dLLM--AR & 0.3629 & $1.3\times10^{-7}$ \\
+LLaDA-Base vs Dream-Base & dLLM--dLLM & 0.3451 & $5.6\times10^{-7}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Trip Planning Instruct per-question correlations.}
+\label{tab:trip-inst-corr}
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+\textbf{Model pair} & \textbf{Type} & \textbf{$r$} & \textbf{$p$-value} \\
+\midrule
+Qwen-Inst vs Llama-Inst & AR--AR & 0.7190 & $4.1\times10^{-33}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.4622 & $5.6\times10^{-12}$ \\
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.2484 & $3.9\times10^{-4}$ \\
+LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.2170 & $2.0\times10^{-3}$ \\
+LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.1647 & $2.0\times10^{-2}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR, shared backbone lineage & 0.1572 & $2.6\times10^{-2}$ \\
+\bottomrule
+\end{tabular}
+\end{table}

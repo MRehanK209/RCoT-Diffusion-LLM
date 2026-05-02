@@ -1,4 +1,5 @@
 \section{Related Work}
+\label{sec:related-work}
 
 \subsection{Autoregressive Language Modeling and Decoding}
 Autoregressive language models factor a token sequence into a product of conditional next-token distributions. Transformer decoders made this factorization scalable, and large pretrained autoregressive models established few-shot prompting as a practical evaluation interface \cite{vaswani2017attention,brown2020language}. Decoding can be deterministic, as in greedy decoding or low-temperature decoding, or stochastic, as in temperature sampling. The latter is central for pass@k reasoning evaluation because repeated samples can explore alternative solution paths.
