@@ -2,44 +2,218 @@
 \label{sec:methodology}
 
 \subsection{Benchmarks}
-The experiments use three benchmarks that stress different parts of reasoning and planning. GSM8K is a grade-school mathematics benchmark with numeric final answers; in this thesis it primarily serves as a reasoning sanity check and as a sensitive test of prompting and answer-format effects. Countdown-cd4 is a constrained arithmetic planning benchmark in which the model must combine four supplied numbers with arithmetic operations to reach a target; it is the central benchmark for studying whether single-sample and many-sample evaluation produce different model rankings. Trip Planning is a structured natural-language planning benchmark in which the model must produce an itinerary with ordered city visits and exact stay durations; it tests whether the Countdown pattern generalizes from symbolic arithmetic plans to longer text plans that must satisfy a stricter output schema.
+
+The experiments use three benchmarks designed to stress different aspects of reasoning and structured generation.
+
+\textbf{GSM8K} is a grade-school mathematics benchmark with numeric final answers. In this thesis, it serves primarily as a reasoning sanity check and as a sensitive probe of prompt formatting and answer extraction effects.
+
+\textbf{Countdown-cd4} is a constrained arithmetic planning task. Each problem provides four numbers and a target, and the model must construct a valid sequence of arithmetic operations that reaches the target. This benchmark is central to the thesis because it enables a controlled comparison between single-sample accuracy and many-sample search behavior.
+
+\textbf{Trip Planning} is a structured natural-language planning benchmark in which the model must generate an itinerary with ordered city visits and exact stay durations. Unlike Countdown, the output is longer and expressed in natural language, but it must still satisfy a strict schema. This benchmark tests whether patterns observed in symbolic planning generalize to structured text generation.
+
+Together, these benchmarks span a progression from numeric reasoning (GSM8K), to symbolic planning (Countdown), to structured natural-language planning (Trip Planning).
 
 \subsection{Models and Prompt Modes}
-The comparison uses two masked diffusion language-model families, LLaDA and Dream, and two autoregressive families, Qwen2.5 and Llama~3.1. Each family is evaluated at roughly comparable 7B--8B scale, with base and instruction-tuned variants wherever available. The goal is not to rank isolated checkpoints in the abstract, but to compare how diffusion-style denoising and autoregressive left-to-right sampling behave under the same benchmark, parser, and sample-budget assumptions.
 
-Prompt format is treated as an experimental variable because instruction-tuned checkpoints are typically trained with chat-role templates, while many reasoning benchmarks are written as flat completion prompts. The \texttt{base\_native} mode is used for base checkpoints and leaves the benchmark in its native completion format. The \texttt{instruct\_templated} mode wraps the task in the model's chat template and is the canonical setting for instruction-tuned checkpoints, because it matches their training-time interface. The \texttt{instruct\_flat} mode feeds the same flat benchmark text to an instruction-tuned model without the chat wrapper. It is included as a diagnostic: if a result changes sharply between templated and flat prompting, the measured score reflects prompt-interface sensitivity as well as reasoning ability. This distinction is important for the thesis because Llama-Instruct on GSM8K changes by more than fifty pass@1 percentage points between the two modes while converging at high pass@k.
+The evaluation compares two masked diffusion language model families, \textbf{LLaDA} and \textbf{Dream}, with two autoregressive families, \textbf{Qwen2.5} and \textbf{Llama~3.1}. Each family is evaluated at approximately 7B--8B parameter scale, using both base and instruction-tuned variants where available.
+
+The goal is not to rank individual checkpoints in isolation, but to compare how diffusion-style denoising and autoregressive left-to-right generation behave under identical evaluation conditions.
+
+Prompt format is treated as an experimental variable because instruction-tuned models are typically trained with chat-style templates, while many reasoning benchmarks are written as flat completion prompts. Three prompt modes are used:
+
+\begin{itemize}
+    \item \textbf{\texttt{base\_native}}: Used for base models. The benchmark is presented in its original completion format.
+    \item \textbf{\texttt{instruct\_templated}}: The task is wrapped in the model's chat template. This is the canonical setting for instruction-tuned models.
+    \item \textbf{\texttt{instruct\_flat}}: The same flat benchmark text is given to an instruction-tuned model without a chat wrapper. This serves as a diagnostic for prompt-interface sensitivity.
+\end{itemize}
+
+The flat and templated instruct settings are not treated as interchangeable. They test different interfaces to the same checkpoint: one follows the chat format expected by instruction tuning, while the other keeps the benchmark in the completion-style format used for base models. The empirical effect of this choice is quantified in the prompt-sensitivity results in Section~\ref{sec:results-gsm8k} and Figure~\ref{fig:gsm8k-prompt}.
+
+\subsection{Unified Evaluation Pipeline}
+\label{sec:unified-evaluation-pipeline}
+
+Figure~\ref{fig:eval-pipeline-ar-vs-dllm} summarizes the full evaluation design. The benchmark instance and prompt mode define a common input interface. After that point, the two generation paradigms differ only in the inference mechanism: autoregressive models produce tokens left-to-right, whereas diffusion models generate through iterative masked-token refinement. Their raw completions are then returned to a shared scoring pipeline. This separation is essential for the thesis because it makes the comparison a controlled study of generation paradigm under matched prompts, datasets, parsers, temperature settings, and sample budgets.
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.98\textwidth]{images/eval_pipeline_ar_vs_dllm.png}
+    \caption{Overall evaluation pipeline for the autoregressive and diffusion model comparison. The model-specific generation path is separated from the shared measurement path: prompt construction precedes paradigm-specific inference, while parser-controlled scoring, pass@k aggregation, and per-question analyses are applied uniformly to the resulting completions.}
+    \label{fig:eval-pipeline-ar-vs-dllm}
+\end{figure}
 
 \subsection{Generation and pass@k Evaluation}
-Diffusion runs use fast-dLLM for the main stochastic experiments, while autoregressive runs use vLLM. Deterministic comparisons use temperature $=0$ and one generated sample per question. Stochastic pass@k comparisons use temperature $=0.7$ and generate $16$, $64$, or $128$ samples per question depending on the benchmark and run. GSM8K and Countdown-cd4 use up to $128$ samples in the main comparisons; Trip Planning uses up to $64$ samples because the generations are longer and the parser is stricter.
 
-For each question, let $n$ be the number of generated samples and $c$ the number of samples scored as correct. The pass@k estimator is
+As shown in Figure~\ref{fig:eval-pipeline-ar-vs-dllm}, diffusion and autoregressive checkpoints enter different inference backends but are evaluated by the same downstream metrics. Diffusion-based generation uses \texttt{fast-dLLM}, while autoregressive generation uses \texttt{vLLM}. Deterministic comparisons use temperature $=0$ and generate one sample per question. Stochastic evaluations use temperature $=0.7$.
+
+The number of samples per question depends on the benchmark:
+\begin{itemize}
+    \item GSM8K and Countdown-cd4: up to $128$ samples
+    \item Trip Planning: up to $64$ samples (due to longer outputs and stricter parsing)
+\end{itemize}
+
+For each question, let $n$ be the number of generated samples and $c$ the number of correct samples. The pass@k estimator is defined as:
+
 \begin{equation}
     \mathrm{pass@}k = 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}.
 \end{equation}
-This metric estimates the probability that at least one of $k$ sampled candidates solves the problem. It is therefore a test-time-search metric, not merely another way to report average accuracy. This distinction is central to the thesis: deterministic accuracy asks whether the first answer is strong, while pass@k asks whether a model can explore a set of candidates that contains a correct answer.
+
+This metric estimates the probability that at least one of $k$ sampled outputs is correct. It is therefore a measure of \emph{test-time search capability}, rather than single-output accuracy. This distinction is central to the thesis: deterministic accuracy measures the quality of the first sample, while pass@k measures whether a model can generate a set of candidates that contains a correct solution.
 
 \subsection{Parser-Controlled Scoring}
 \label{sec:parser-details}
 \label{sec:methodology-parsers}
-Figure~\ref{fig:parser-pipeline} shows the scoring pipeline. Raw completions are not compared to gold answers directly. They first pass through task-specific extraction and validation rules that convert free-form text into sample-level correctness labels. This parser layer is part of the measurement system: a completion can fail because the reasoning is wrong, because the final answer is in the wrong format, or because the output cannot be parsed into the required plan structure.
+
+Figure~\ref{fig:parser-pipeline} expands the parser-controlled scoring layer from Figure~\ref{fig:eval-pipeline-ar-vs-dllm}. Raw model completions are not compared directly to gold answers. Instead, they pass through a task-specific parser that applies extraction and validation rules to convert free-form outputs into structured correctness labels.
+
+This parser layer is part of the measurement system. A completion can fail for three distinct reasons:
+\begin{itemize}
+    \item \textbf{Parse failure}: the output cannot be interpreted structurally
+    \item \textbf{Format failure}: the answer is present but not in the required format
+    \item \textbf{Validity failure}: the structured output violates task constraints
+\end{itemize}
+
+Only outputs that pass parsing and validation are converted into sample-level correctness indicators.
 
 \begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.98\textwidth]{images/parser_layer_pipeline.pdf}
-\caption{Shared evaluation pipeline including the parser layer as an explicit measurement stage. Raw completions are routed through task-specific extractors and validators before sample-level correctness vectors, accuracy, pass@k, and correlation metrics are computed. Parse failure, format failure, and validity failure are analytically distinct outcomes.}
-\label{fig:parser-pipeline}
-\end{figure}
+    \centering
+    \resizebox{0.95\textwidth}{!}{%
+    \begin{tikzpicture}[
+        box/.style={
+            draw,
+            rounded corners,
+            align=center,
+            minimum height=0.85cm,
+            minimum width=3.0cm,
+            font=\small
+        },
+        decision/.style={
+            draw,
+            diamond,
+            aspect=2.2,
+            align=center,
+            inner sep=1.5pt,
+            minimum width=2.7cm,
+            minimum height=1.1cm,
+            font=\small
+        },
+        task/.style={
+            box,
+            fill=blue!5,
+            minimum width=3.2cm
+        },
+        fail/.style={
+            draw=red!60!black,
+            rounded corners,
+            align=center,
+            minimum height=0.75cm,
+            minimum width=2.4cm,
+            font=\small,
+            fill=red!5
+        },
+        metric/.style={
+            box,
+            fill=yellow!10
+        },
+        arrow/.style={
+            -{Latex[length=2.5mm]},
+            thick
+        },
+        failarrow/.style={
+            -{Latex[length=2.5mm]},
+            very thick,
+            draw=red!65!black
+        },
+        failline/.style={
+            very thick,
+            draw=red!65!black
+        }
+    ]
+    
+    % Top row
+    \node[box, fill=gray!8] (raw) at (0,0) {Raw model\\completions};
+    
+    \node[box, fill=blue!8] (parser) at (4.1,0)
+    {Task-specific parser\\extraction + validation};
+    
+    % Decision node
+    \node[decision] (decision) at (8.5,0) {Parsing\\successful?};
+    
+    % Failure branch
+    \node[fail] (parsefail) at (3.2,-3.35) {Parse\\failure};
+    \node[fail] (formatfail) at (6.0,-3.35) {Format\\failure};
+    \node[fail] (validfail) at (8.8,-3.35) {Validity\\failure};
+    
+    % Task nodes
+    \node[task] (gsm) at (12.6,0)
+    {GSM8K\\boxed / numeric\\extraction};
+    
+    \node[task] (countdown) at (16.6,0)
+    {Countdown-cd4\\equation-chain\\validation};
+    
+    \node[task] (trip) at (20.6,0)
+    {Trip Planning\\itinerary\\validation};
+    
+    % Aggregation
+    \node[box, fill=green!8] (vectors) at (16.6,-3.6)
+    {Sample-level\\correctness vectors};
+    
+    \node[metric] (metrics) at (16.6,-5.2)
+    {Accuracy / pass@k /\\correlation metrics};
+    
+    % Main flow
+    \draw[arrow] (raw.east) -- (parser.west);
+    \draw[arrow] (parser.east) -- (decision.west);
+    
+    % Decision branches
+    \coordinate (failurehub) at (8.5,-1.7);
+    \coordinate (failureleft) at (3.2,-1.7);
+    \coordinate (failureformat) at (6.0,-1.7);
+    \coordinate (failurevalid) at (8.8,-1.7);
+    \draw[failarrow] (decision.south) -- node[right, pos=0.65] {No} (failurehub);
+    \draw[failline] (failureleft) -- (failurevalid);
+    \draw[failarrow] (failureleft) -- (parsefail.north);
+    \draw[failarrow] (failureformat) -- (formatfail.north);
+    \draw[failarrow] (failurevalid) -- (validfail.north);
+    
+    \draw[arrow] (decision.east) -- node[pos=0.58, above] {Yes} (gsm.west);
+    \draw[arrow] (gsm.east) -- (countdown.west);
+    \draw[arrow] (countdown.east) -- (trip.west);
+    
+    % Merge
+    \draw[arrow] (gsm.south) |- (vectors.west);
+    \draw[arrow] (countdown.south) -- (vectors.north);
+    \draw[arrow] (trip.south) |- (vectors.east);
+    
+    \draw[arrow] (vectors) -- (metrics);
+    
+    \end{tikzpicture}%
+    }
+    \caption{Evaluation pipeline with an explicit parser decision stage. After raw completions enter the parser, the workflow branches: failures are categorized as parse, format, or validity failures, while successful parses continue to task-specific scoring and then to sample-level correctness vectors and aggregate metrics.}
+    \label{fig:parser-pipeline}
+    \end{figure}
 
-\textbf{GSM8K.} Gold answers are extracted from the official final-answer marker. Model answers are scored through a boxed-answer extractor, so the canonical evaluation expects the final numeric answer to appear in \texttt{\detokenize{\boxed{...}}} or \texttt{\detokenize{\fbox{...}}}. Commas and numeric formatting are normalized when possible, and numeric predictions are compared against the gold value with a small tolerance. A more permissive final-number fallback is evaluated only as a parser-sensitivity analysis; it is not used to overwrite the canonical scores.
+\textbf{GSM8K.} Gold answers are extracted from the official final-answer marker. Model outputs are scored using a boxed-answer extractor, requiring the final numeric answer to appear in \texttt{\detokenize{\boxed{...}}} or \texttt{\detokenize{\fbox{...}}}. Numeric formatting is normalized when possible, and predictions are compared to the gold value within a small tolerance. A more permissive fallback that extracts the final number is used only for parser-sensitivity analysis and does not overwrite canonical scores.
 
-\textbf{Countdown-cd4.} The canonical scorer expects a leading chain of comma-separated binary equations such as \texttt{a+b=c,c-d=e}. The expression chain must evaluate to the target, use only the supplied numbers, use each supplied number at most as often as allowed, and introduce intermediate results only through earlier equations. The allowed operations are addition, subtraction, multiplication, and division after normalizing common operator variants. Invalid syntax, unsafe or unsupported expressions, wrong target values, and wrong number use are scored as failures.
+\textbf{Countdown-cd4.} The scorer expects a leading chain of comma-separated binary equations (e.g., \texttt{a+b=c,c-d=e}). The chain must evaluate to the target, use only the provided numbers, respect usage constraints, and introduce intermediate values only through earlier steps. Allowed operations are addition, subtraction, multiplication, and division. Invalid syntax, incorrect evaluation, or improper number usage result in failure.
 
-\textbf{Trip Planning.} The Trip Planning scorer parses the generated itinerary for a total-day statement, visit day ranges, and flight lines. From these it reconstructs the ordered city sequence and stay duration for each city, then compares that parsed plan with the required ordered cities and durations. Malformed plans, missing day ranges, missing flight lines, wrong city order, and duration mismatches fail the exact-match validity check.
+\textbf{Trip Planning.} The scorer parses generated itineraries to extract total duration, city visit ranges, and flight transitions. From this information, it reconstructs the ordered sequence of cities and their durations, which are then compared against the required plan. Errors such as malformed structure, missing components, incorrect ordering, or duration mismatches lead to failure.
 
 \subsection{Per-Question Accuracy Analysis}
-Average pass@k curves say which model is stronger overall, but they do not reveal whether two models solve the same questions. The per-question analysis therefore computes, for each model and each question, the fraction of generated samples that are correct. Pearson correlations between these vectors quantify failure-mode alignment: high correlation means two models tend to solve and fail on the same questions, while low correlation suggests complementarity.
 
-The same per-question correctness data also supports an oracle-union analysis. This analysis asks how many questions would be solved if an ideal selector could choose from a pair of model families or from all available models. It is not a deployable ensemble, but it gives an upper bound on the value of combining diffusion and autoregressive samples. The generated HTML comparison views are used for qualitative inspection of examples behind these vectors; the thesis reports the numerical correlation and oracle-union results rather than the implementation details of those views.
+Aggregate metrics such as pass@k summarize overall performance but do not reveal whether different models succeed on the same questions. To analyze this, per-question correctness rates are computed by measuring the fraction of correct samples for each question and model.
+
+Pearson correlation between these per-question vectors quantifies alignment in model behavior. High correlation indicates that two models succeed and fail on similar instances, while low correlation suggests complementary strengths.
+
+This representation also enables an \textbf{oracle union analysis}, which estimates the maximum achievable performance if an ideal selector could choose the correct output from a set of models. While not a deployable method, it provides an upper bound on the potential benefit of combining diffusion and autoregressive approaches.
 
 \subsection{Evaluation Conditions}
-The main stochastic comparisons use the same benchmark split, prompt mode, parser, temperature, and sample budget within each condition. GSM8K base and instruct comparisons use $128$ questions and $128$ samples per question; the few-shot ablations use $256$ questions and $16$ samples per question. Countdown-cd4 uses $992$ questions, eight few-shot examples, and $128$ samples per question. Trip Planning uses $200$ questions, two few-shot examples, and $64$ samples per question. Generation length is set to match the task: shorter for Countdown expressions and longer for GSM8K reasoning traces and Trip Planning itineraries. Fixed random seeds are used for sampling and dataset subsampling so that model comparisons within a condition are aligned.
+
+All comparisons are conducted under controlled conditions, ensuring that models within each experiment share the same dataset split, prompt format, parser, temperature, and sample budget.
+
+\begin{itemize}
+    \item GSM8K: 128 questions, 128 samples (main); 256 questions, 16 samples (few-shot ablation)
+    \item Countdown-cd4: 992 questions, 8 few-shot examples, 128 samples
+    \item Trip Planning: 200 questions, 2 few-shot examples, 64 samples
+\end{itemize}
+
+Generation length is adjusted per task: shorter for Countdown expressions and longer for GSM8K reasoning traces and Trip Planning outputs. Fixed random seeds are used for both sampling and dataset subsampling to ensure alignment across model comparisons.
