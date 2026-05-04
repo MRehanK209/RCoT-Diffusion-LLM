@@ -2,6 +2,9 @@
 \setlength{\parindent}{0cm}
 \setlength{\parskip}{0.55em}
 \newcounter{pageCounter}
+\makeatletter
+\renewcommand{\@pnumwidth}{2em}
+\makeatother
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}

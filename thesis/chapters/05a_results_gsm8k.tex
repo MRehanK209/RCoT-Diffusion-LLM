@@ -3,7 +3,7 @@
 
 GSM8K behaves as a saturating sanity check rather than a paradigm-ranking benchmark. All four model families reach pass@128 above $0.97$ in the main templated runs, and three of four reach $1.000$, so the benchmark cannot separate paradigms at large $k$. AIME or MATH-Beyond would be needed for that purpose. What GSM8K does separate is prompt format and few-shot count, where the effects are large enough to dominate cross-paradigm differences. Diffusion instruct models lead in zero-shot mode (LLaDA-Instruct pass@1$=0.749$, Dream-Instruct $0.734$ versus Qwen-Instruct $0.534$ and Llama-Instruct $0.488$); $4$-shot prompting essentially closes that gap, raising Qwen-Instruct to $0.789$ and Llama-Instruct to $0.782$. The full $0$-shot, $4$-shot, base, and instruct breakdowns are reproduced in Appendix~\ref{sec:appendix-gsm8k}.
 
-The largest single effect in the entire thesis appears here. Removing the chat template from Llama-Instruct on GSM8K drops pass@1 from $0.782$ to $0.211$, a $57$-point swing on a benchmark on which both prompt modes converge to pass@128$=1.000$. Figure~\ref{fig:gsm8k-prompt} therefore demonstrates that two methodologically defensible prompt choices can produce nearly opposite low-$k$ rankings while agreeing at large $k$ once the underlying capability has had enough sampling attempts.
+The largest single prompt-format effect appears here. Removing the chat template from Llama-Instruct on GSM8K drops pass@1 from $0.782$ to $0.211$, a $57$-point swing on a benchmark on which both prompt modes converge to pass@128$=1.000$. Figure~\ref{fig:gsm8k-prompt} reports the pass@1 difference between templated and flat instruct prompting.
 
 \begin{figure}[!htbp]
 \centering
@@ -12,4 +12,4 @@ The largest single effect in the entire thesis appears here. Removing the chat t
 \label{fig:gsm8k-prompt}
 \end{figure}
 
-GSM8K therefore enters the thesis as an evaluation-protocol stress test: it shows that prompt format and few-shot count are not implementation details but first-class experimental variables, and it justifies reporting both prompt modes for the more diagnostic Countdown and Trip Planning benchmarks that follow.
+The GSM8K runs record prompt format and few-shot count as explicit experimental variables before the more diagnostic Countdown and Trip Planning benchmarks that follow.

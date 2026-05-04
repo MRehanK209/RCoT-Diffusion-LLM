@@ -1,7 +1,7 @@
 \section{Results}
 \label{sec:results}
 
-The results are organized around the central empirical pattern rather than around every available artifact. GSM8K shows that prompt format and few-shot examples can dominate low-$k$ accuracy on a saturating reasoning benchmark. Countdown-cd4 provides the clearest ranking reversal: LLaDA-Base leads at pass@1, but Qwen-Base leads at pass@128. Trip Planning shows the same trade-off in a stricter natural-language planning task, where Dream is strongest at low $k$ among the standard diffusion runs and Llama benefits most from larger sample budgets. The remaining sections explain why this happens: parser constraints shape the measured scores, diversity metrics support the concentration-versus-diversity interpretation, and per-question accuracy analysis shows that the paradigms have complementary failure modes.
+The results are organized around the main observed patterns rather than around every available artifact. GSM8K reports prompt-format and few-shot effects on a saturating reasoning benchmark. Countdown-cd4 reports the clearest ranking reversal: LLaDA-Base leads at pass@1, while Qwen-Base leads at pass@128. Trip Planning reports the same low-$k$/high-$k$ contrast in a stricter natural-language planning task, where Dream is strongest at low $k$ among the standard diffusion runs and Llama benefits most from larger sample budgets. The remaining subsections report parser statistics, diversity measurements, and per-question correlation and oracle-union analyses.
 
 Detailed numeric tables are kept in Appendix~\ref{sec:appendix-detailed-results}. The main chapter uses figures and short numerical comparisons only when they are needed to support the argument.
 

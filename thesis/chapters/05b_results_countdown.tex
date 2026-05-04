@@ -1,7 +1,7 @@
 \subsection{Countdown-cd4: the central pass@k ranking reversal}
 \label{sec:results-countdown}
 
-Countdown-cd4 is the benchmark on which the ranking-reversal claim is sharpest. Diffusion models lead at deterministic and low-$k$ evaluation, but autoregressive models overtake decisively as the sampling budget grows. Figure~\ref{fig:countdown-base} is the central empirical evidence for the thesis.
+Countdown-cd4 shows the clearest ranking reversal in the evaluated results. Diffusion models lead at deterministic and low-$k$ evaluation, while autoregressive models overtake as the sampling budget grows. Figure~\ref{fig:countdown-base} reports the base pass@k curves.
 
 \begin{figure}[!htbp]
 \centering
@@ -10,9 +10,9 @@ Countdown-cd4 is the benchmark on which the ranking-reversal claim is sharpest. 
 \label{fig:countdown-base}
 \end{figure}
 
-At pass@1 the ordering is LLaDA-Base $>$ Dream-Base $>$ Qwen-Base $>$ Llama-Base. At pass@128 it becomes Qwen-Base $>$ Llama-Base $>$ Dream-Base $>$ LLaDA-Base. This is not a small fluctuation: Qwen-Base rises from $0.040$ to $0.513$, while LLaDA-Base rises from $0.143$ to only $0.272$. The result supports the concentration-versus-diversity reading developed in Section~\ref{sec:results-diversity} and is the strongest single piece of paradigm-level evidence in the thesis.
+At pass@1 the ordering is LLaDA-Base $>$ Dream-Base $>$ Qwen-Base $>$ Llama-Base. At pass@128 it becomes Qwen-Base $>$ Llama-Base $>$ Dream-Base $>$ LLaDA-Base. Qwen-Base rises from $0.040$ to $0.513$, while LLaDA-Base rises from $0.143$ to $0.272$.
 
-The instruct-templated condition is more model-dependent than the base condition. Dream-Instruct retains a useful pass@k profile, Llama-Instruct becomes the strongest high-$k$ model, Qwen-Instruct plateaus early, and LLaDA-Instruct shows a checkpoint-level collapse to pass@128$=0.055$ that does not appear in the same model on GSM8K (pass@1$=0.756$) or Trip Planning (pass@1$=0.010$) and that does not appear in LLaDA-Base on Countdown (pass@1$=0.143$). The instruct-templated row is therefore a property of this specific instruction-tuned checkpoint on this constrained planning task, not a generic dLLM-instruct artifact, and is included for completeness rather than as evidence for the paradigm-level claim.
+The instruct-templated condition is more model-dependent than the base condition. Dream-Instruct retains a useful pass@k profile, Llama-Instruct becomes the strongest high-$k$ model, Qwen-Instruct plateaus early, and LLaDA-Instruct shows a checkpoint-level collapse to pass@128$=0.055$ that does not appear in the same model on GSM8K (pass@1$=0.756$) or Trip Planning (pass@1$=0.010$) and that does not appear in LLaDA-Base on Countdown (pass@1$=0.143$).
 
 \begin{figure}[!htbp]
 \centering
