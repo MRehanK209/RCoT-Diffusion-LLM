@@ -1,31 +1,10 @@
 \section{Results}
 \label{sec:results}
 
-Table~\ref{tab:cross-benchmark-summary} compresses the main empirical story before the benchmark-specific sections unpack it in detail.
+The results are organized around the central empirical pattern rather than around every available artifact. GSM8K shows that prompt format and few-shot examples can dominate low-$k$ accuracy on a saturating reasoning benchmark. Countdown-cd4 provides the clearest ranking reversal: LLaDA-Base leads at pass@1, but Qwen-Base leads at pass@128. Trip Planning shows the same trade-off in a stricter natural-language planning task, where Dream is strongest at low $k$ among the standard diffusion runs and Llama benefits most from larger sample budgets. The remaining sections explain why this happens: parser constraints shape the measured scores, diversity metrics support the concentration-versus-diversity interpretation, and per-question accuracy analysis shows that the paradigms have complementary failure modes.
 
-\begin{table}[!htbp]
-\centering
-\caption{Compact cross-benchmark summary of low-$k$ versus high-$k$ behavior. Percentages are computed directly from the canonical JSON result files.}
-\label{tab:cross-benchmark-summary}
-\footnotesize
-\scriptsize
-\setlength{\tabcolsep}{4pt}
-\begin{tabularx}{\textwidth}{L{2.4cm}YYYYL{2.4cm}}
-\toprule
-\textbf{Condition} & \textbf{Best dLLM @ pass@1} & \textbf{Best AR @ pass@1} & \textbf{Best dLLM @ pass@max} & \textbf{Best AR @ pass@max} & \textbf{Ranking shift} \\
-\midrule
-GSM8K base & Dream 72.4 & Qwen 70.9 & Dream 97.7 & Qwen 100.0 & weak, saturating \\
-GSM8K instruct & Dream 76.1 & Qwen 79.8 & LLaDA 99.2 & Qwen 100.0 & no low-$k$ dLLM lead \\
-Countdown base & LLaDA 14.3 & Qwen 4.0 & Dream 37.6 & Qwen 51.3 & strong reversal \\
-Countdown instruct & Dream 9.2 & Qwen 7.8 & Dream 32.3 & Llama 46.2 & strong reversal \\
-Trip Planning base & Dream 5.4 & Llama 2.5 & Dream 22.5 & Llama 25.5 & moderate reversal \\
-Trip Planning instruct & Dream 5.7 & Llama 1.7 & Dream 15.0 & Llama 21.0 & moderate; flat Llama reaches 29.5 in diagnostic \\
-\bottomrule
-\end{tabularx}
-\end{table}
+Detailed numeric tables are kept in Appendix~\ref{sec:appendix-detailed-results}. The main chapter uses figures and short numerical comparisons only when they are needed to support the argument.
 
-
-% Results subsections are split because this chapter carries most tables and figures.
 \input{chapters/05a_results_gsm8k}
 \input{chapters/05b_results_countdown}
 \input{chapters/05c_results_trip_planning}

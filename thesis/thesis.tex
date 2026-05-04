@@ -1,5 +1,5 @@
 % !TEX root = thesis.tex
-%%% Goettingen University-style thesis draft project
+%%% Goettingen University-style thesis project
 %%% Based on the structure of mhellmeier/LaTeX-Thesis-Template.
 \documentclass[12pt,a4paper,american,oneside]{scrartcl}
 \input{packages}
@@ -14,7 +14,7 @@
 \section*{Declaration of Independent Work}
 \markboth{Declaration of Independent Work}{Declaration of Independent Work}
 \addcontentsline{toc}{section}{Declaration of Independent Work}
-I hereby declare that I have written this thesis draft independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used in this draft according to established academic citation rules. This version is a strengthened thesis draft based on the Milestone 2 material, the local evaluation code, and the available JSON result artifacts.
+I hereby declare that I have written this thesis independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used according to established academic citation rules. The empirical analysis is based on the evaluation runs and result artifacts produced for this thesis.
 
 \vspace{2cm}
 G\"ottingen, 7 April 2026
@@ -27,7 +27,10 @@ G\"ottingen, 7 April 2026
 \section*{Abstract}
 \markboth{Abstract}{Abstract}
 \addcontentsline{toc}{section}{Abstract}
-This thesis draft investigates whether chain-of-thought reasoning and planning can be rethought through diffusion language models. It compares LLaDA-8B and Dream-v0-7B with Qwen2.5-7B and Llama-3.1-8B across GSM8K, Countdown-cd4, and Trip Planning. The evaluation combines deterministic accuracy, stochastic pass@k, parser-controlled answer extraction, prompt-mode ablations, and per-question correlation analysis. The central finding is that diffusion language models are stronger in deterministic and low-k planning settings, while autoregressive models improve more under large-k sampling and can overtake at higher sample budgets. Prompt format and few-shot examples substantially affect the ranking, and per-question correlations suggest that the paradigms solve overlapping but meaningfully different subsets of problems. The resulting conclusion is not that diffusion language models simply replace autoregressive models, but that they change the evaluation trade-off and motivate hybrid or ensemble-style reasoning evaluation.
+This thesis investigates whether chain-of-thought reasoning and planning can be rethought through diffusion language models. It compares LLaDA-8B and Dream-v0-7B with Qwen2.5-7B and Llama-3.1-8B across GSM8K, Countdown-cd4, and Trip Planning. The evaluation combines deterministic accuracy, stochastic pass@k, parser-controlled answer extraction, prompt-mode ablations, and per-question accuracy analysis. The central finding is that diffusion language models are stronger in deterministic and low-k planning settings, while autoregressive models improve more under large-k sampling and can overtake at higher sample budgets. Prompt format and few-shot examples substantially affect the ranking, and per-question correlations show that the paradigms solve overlapping but meaningfully different subsets of problems. Diffusion language models therefore do not simply replace autoregressive models; they change the evaluation trade-off and motivate hybrid or ensemble-style reasoning evaluation.
+
+\vfill
+\noindent\footnotesize\textbf{Evaluation code and artifacts:} \url{https://github.com/MRehanK209/RCoT-Diffusion-LLM}
 \cleardoublepage
 
 \begin{spacing}{1}
@@ -142,23 +145,7 @@ W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. Yu, J. E. Gonzalez, H. Zhang, 
 \end{thebibliography}
 
 
-\section{AI Usage Card}
-This appendix is included because the provided GIPPLab sample thesis contains an AI usage card. The final declaration should be adjusted to the applicable University of G\"ottingen and study-program rules before submission.
-
-\begin{table}[H]
-\centering
-\caption{Draft AI usage card for the thesis project.}
-\small
-\begin{tabularx}{\textwidth}{p{4cm}Y}
-\toprule
-Category & Draft entry \\
-\midrule
-Tools used & ChatGPT/Codex was used to audit the local evaluation repository, inspect parser and scoring code, generate thesis figures from JSON artifacts, and revise the LaTeX draft prose. \\
-Human responsibility & The author remains responsible for checking every claim, table value, citation, and interpretation before submission. \\
-Data and results & No new experimental numbers were invented. The tables and figures are based on local JSON artifacts, Milestone 2 documents, and inspected repository code. \\
-Writing status & This remains a thesis draft. It now has real figures, parser documentation, and strengthened prose, but it still needs supervisor review and final polishing before submission. \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\section*{AI Usage Statement}
+ChatGPT/Codex was used as an assistance tool to inspect the evaluation repository, summarize existing result artifacts, generate figures from stored JSON outputs, and improve the organization and wording of the LaTeX manuscript. The author remains responsible for all claims, numerical values, citations, and interpretations. No experimental numbers are introduced without corresponding result artifacts in the evaluation repository.
 
 \end{document}
