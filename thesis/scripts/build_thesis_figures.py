@@ -293,7 +293,7 @@ def plot_correlation_summary() -> None:
         [0.3451, 0.7061, 0.5394],
         [0.4622, 0.7190, 0.2484],
         [0.6291, 0.3204, 0.6189],
-        [0.5671, 0.6638, 0.6550],
+        [0.5672, 0.6638, 0.6550],
     ]
     fig, ax = plt.subplots(figsize=(7.8, 5.6), constrained_layout=True)
     im = ax.imshow(values, cmap="YlGnBu", vmin=0.0, vmax=0.75, aspect="auto")

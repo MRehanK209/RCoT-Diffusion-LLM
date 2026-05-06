@@ -96,7 +96,7 @@ Llama-Instruct flat & 0.050 & 0.484 \\
 
 \begin{table}[!htbp]
 \centering
-\caption{Trip Planning deterministic comparison (greedy, $n=1$): top-ten configurations across model family, backend, and block size.}
+\caption{Trip Planning deterministic comparison (greedy, $n=1$): selected leading configurations and AR reference rows across model family, backend, and block size.}
 \label{tab:trip-deterministic-full}
 \scriptsize
 \begin{tabularx}{\textwidth}{Yc}
@@ -104,15 +104,15 @@ Llama-Instruct flat & 0.050 & 0.484 \\
 \textbf{Model / variant} & \textbf{Accuracy} \\
 \midrule
 Dream-Instruct [bl=256] [dllm] & 0.150 \\
+Dream-Instruct [bl=32] [dllm] & 0.150 \\
 Dream-Base [bl=256] [dllm] & 0.145 \\
+Dream-Base [bl=32] [dllm] & 0.145 \\
+Dream-Instruct [bl=256] [fast-dllm] & 0.145 \\
 Dream-Base [bl=32] [fast-dllm] & 0.135 \\
 Dream-Instruct [flat] [bl=32] [fast-dllm] & 0.125 \\
 LLaDA-Base [bl=256] [dllm] & 0.115 \\
+Llama-Instruct [flat] [ar] & 0.095 \\
 Llama-Instruct [flat] [vllm] & 0.080 \\
-LLaDA-Instruct [bl=256] [dllm] & 0.080 \\
-Llama-Base [vllm] & 0.025 \\
-Qwen-Instruct [vllm] & 0.015 \\
-Qwen-Base [vllm] & 0.015 \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -190,9 +190,9 @@ Qwen-Base vs Llama-Base & AR--AR & 0.3204 & $2.3\times10^{-4}$ \\
 \midrule
 Qwen-Inst vs Llama-Inst & AR--AR & 0.6638 & $1.4\times10^{-17}$ \\
 LLaDA-Inst vs Llama-Inst & dLLM--AR & 0.6550 & $5.0\times10^{-17}$ \\
-Dream-Inst vs Llama-Inst & dLLM--AR & 0.6398 & $4.3\times10^{-16}$ \\
-LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.5671 & $3.0\times10^{-12}$ \\
-Dream-Inst vs Qwen-Inst & dLLM--AR, shared backbone lineage & 0.5598 & $6.5\times10^{-12}$ \\
+Dream-Inst vs Llama-Inst & dLLM--AR & 0.6399 & $4.3\times10^{-16}$ \\
+LLaDA-Inst vs Dream-Inst & dLLM--dLLM & 0.5672 & $2.9\times10^{-12}$ \\
+Dream-Inst vs Qwen-Inst & dLLM--AR, shared backbone lineage & 0.5595 & $6.6\times10^{-12}$ \\
 LLaDA-Inst vs Qwen-Inst & dLLM--AR & 0.4847 & $6.8\times10^{-9}$ \\
 \bottomrule
 \end{tabular}

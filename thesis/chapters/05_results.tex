@@ -1,14 +1,14 @@
 \section{Results}
 \label{sec:results}
 
-The results are organized around the main observed patterns rather than around every available artifact. GSM8K reports prompt-format and few-shot effects on a saturating reasoning benchmark. Countdown-cd4 reports the clearest ranking reversal: LLaDA-Base leads at pass@1, while Qwen-Base leads at pass@128. Trip Planning reports the same low-$k$/high-$k$ contrast in a stricter natural-language planning task, where Dream is strongest at low $k$ among the standard diffusion runs and Llama benefits most from larger sample budgets. The remaining subsections report parser statistics, diversity measurements, and per-question correlation and oracle-union analyses.
+The results are organized around the evaluation pipeline used for the main comparison. The chapter begins with the diffusion hyperparameter sweep because generation length, block length, and denoising steps define the operating regime for LLaDA and Dream. It then reports GSM8K as a prompt-sensitivity and saturation sanity check, Countdown-cd4 as the clearest pass@k ranking reversal, and Trip Planning as a natural-language planning extension with stricter parser constraints. The remaining subsections report parser statistics, diversity measurements, and per-question correlation and oracle-union analyses.
 
 Detailed numeric tables are kept in Appendix~\ref{sec:appendix-detailed-results}. The main chapter uses figures and short numerical comparisons only when they are needed to support the argument.
 
+\input{chapters/05d_results_hyperparameters}
 \input{chapters/05a_results_gsm8k}
 \input{chapters/05b_results_countdown}
 \input{chapters/05c_results_trip_planning}
-\input{chapters/05d_results_hyperparameters}
 \input{chapters/05e_results_parser_sensitivity}
 \input{chapters/05f_results_diversity}
 \input{chapters/05g_results_correlation_oracle}

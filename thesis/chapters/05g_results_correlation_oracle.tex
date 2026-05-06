@@ -10,7 +10,7 @@ The pass@k results compare aggregate accuracies. Per-question accuracy vectors c
 \label{fig:correlation-summary}
 \end{figure}
 
-The key result is Countdown Base. LLaDA-Base and Dream-Base correlate at $r=0.638$, which exceeds Dream-Base--Qwen-Base at $r=0.572$ even though Dream shares Qwen's pretrained lineage. Trip Planning Instruct adds a complementary observation: cross-paradigm correlations are uniformly low, especially Dream-Instruct--Qwen-Instruct at $r=0.157$.
+High within-paradigm correlations indicate that models from the same generation paradigm tend to share failure modes. Countdown Base is the most informative case: LLaDA-Base and Dream-Base correlate at $r=0.638$, which exceeds Dream-Base--Qwen-Base at $r=0.572$ even though Dream shares Qwen's pretrained lineage. This is evidence of behavioral alignment by generation paradigm beyond pretrained lineage, not proof of a mechanistic cause. Trip Planning Instruct adds a complementary observation: AR--AR correlation is high while cross-paradigm correlations are lower, especially Dream-Instruct--Qwen-Instruct at $r=0.157$.
 
 \begin{figure}[!htbp]
 \centering
@@ -19,4 +19,4 @@ The key result is Countdown Base. LLaDA-Base and Dream-Base correlate at $r=0.63
 \label{fig:oracle-gain}
 \end{figure}
 
-The oracle analysis reports upper-bound complementarity from the existing samples. On Countdown base, the best single model solves $509$ of $992$ questions, while a Dream$+$Qwen oracle union solves $541$ and the full four-model union solves $604$. On Trip Planning base, the best single model solves $51$ of $200$ questions, while Dream$+$Llama solves $64$ and the full four-model union solves $71$. No practical selector is implemented.
+The oracle analysis follows from the correlation question: if models solve different questions, a perfect selector could combine them. The reported oracle unions are therefore upper bounds on complementarity from the existing samples, not practical methods. On Countdown base, the best single model solves $509$ of $992$ questions, while a Dream$+$Qwen oracle union solves $541$ and the full four-model union solves $604$. On Trip Planning base, the best single model solves $51$ of $200$ questions, while Dream$+$Llama solves $64$ and the full four-model union solves $71$. A deployable system would need a learned selector, verifier, router, or parser-aware validation method.
