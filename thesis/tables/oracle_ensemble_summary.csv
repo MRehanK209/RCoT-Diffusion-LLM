@@ -1,0 +1,7 @@
+condition,benchmark,questions,dllm_only_solved,ar_only_solved,both_solved,neither_solved,best_single_model,best_single_solved,best_dllm_plus_best_ar_pair,best_dllm_plus_best_ar_union,all_model_oracle_union,improvement_over_best_single,disagreement_rate,complementarity_gain
+gsm8k_base,gsm8k,128,0,2,126,0,Qwen,128,LLaDA + Qwen,128,128,0,0.015625,0.0
+gsm8k_instruct,gsm8k,128,0,1,127,0,Qwen,128,LLaDA + Qwen,128,128,0,0.0078125,0.0
+countdown_base,countdown,992,21,194,389,388,Qwen,509,Dream + Qwen,541,604,32,0.21673387096774194,0.03225806451612903
+countdown_instruct,countdown,992,32,164,305,491,Llama,458,Dream + Llama,493,501,35,0.1975806451612903,0.03528225806451613
+trip_planning_base,trip_planning,200,13,19,39,129,Llama,51,Dream + Llama,64,71,13,0.16,0.065
+trip_planning_instruct,trip_planning,200,14,22,22,142,Llama,42,Dream + Llama,55,58,13,0.18,0.065

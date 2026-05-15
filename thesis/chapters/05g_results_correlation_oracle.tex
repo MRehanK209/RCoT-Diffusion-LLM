@@ -15,8 +15,8 @@ High within-paradigm correlations indicate that models from the same generation 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.84\textwidth]{images/oracle_ensemble_gain.pdf}
-\caption{Oracle complementarity gain over the best single model. GSM8K is saturated, but both planning benchmarks show measurable paradigm-level union gains.}
+\caption{Oracle union gain over the best single model. GSM8K is saturated, but both planning benchmarks show measurable complementarity in the sampled outputs.}
 \label{fig:oracle-gain}
 \end{figure}
 
-The oracle analysis follows from the correlation question: if models solve different questions, a perfect selector could combine them. The reported oracle unions are therefore upper bounds on complementarity from the existing samples, not practical methods. On Countdown base, the best single model solves $509$ of $992$ questions, while a Dream$+$Qwen oracle union solves $541$ and the full four-model union solves $604$. On Trip Planning base, the best single model solves $51$ of $200$ questions, while Dream$+$Llama solves $64$ and the full four-model union solves $71$. A deployable system would need a learned selector, verifier, router, or parser-aware validation method.
+The oracle analysis asks how much performance would be available if a selector could always choose a correct sample whenever one exists among a set of models. This is not a practical ensemble method, because it assumes knowledge of correctness at selection time. It is useful only as an upper bound on complementarity in the existing samples. On Countdown base, the best single model solves $509$ of $992$ questions, while a Dream$+$Qwen oracle union solves $541$ and the full four-model union solves $604$. On Trip Planning base, the best single model solves $51$ of $200$ questions, while Dream$+$Llama solves $64$ and the full four-model union solves $71$. A practical system would need a learned selector, verifier, router, or parser-aware validation method.

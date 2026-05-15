@@ -1,7 +1,7 @@
-\subsection{Countdown-cd4: the central pass@k ranking reversal}
+\subsection{Countdown-cd4: budget-dependent ranking reversal}
 \label{sec:results-countdown}
 
-Countdown-cd4 shows the clearest ranking reversal in the evaluated results. Diffusion models lead at deterministic and low-$k$ evaluation, while autoregressive models overtake as the sampling budget grows. Figure~\ref{fig:countdown-base} reports the base pass@k curves.
+Countdown-cd4 gives the clearest budget-dependent ranking reversal. Under low-budget evaluation, diffusion models are competitive or leading. As $k$ increases, some AR models gain more from repeated sampling and overtake at high pass@k. Figure~\ref{fig:countdown-base} reports the base pass@k curves.
 
 \begin{figure}[!htbp]
 \centering
@@ -12,7 +12,7 @@ Countdown-cd4 shows the clearest ranking reversal in the evaluated results. Diff
 
 At pass@1 the ordering is LLaDA-Base $>$ Dream-Base $>$ Qwen-Base $>$ Llama-Base. At pass@128 it becomes Qwen-Base $>$ Llama-Base $>$ Dream-Base $>$ LLaDA-Base. Qwen-Base rises from $0.040$ to $0.513$, while LLaDA-Base rises from $0.143$ to $0.272$.
 
-The instruct-templated condition is more model-dependent than the base condition. Dream-Instruct retains a useful pass@k profile, Llama-Instruct becomes the strongest high-$k$ model, Qwen-Instruct plateaus early, and LLaDA-Instruct shows a checkpoint-level collapse to pass@128$=0.055$ that does not appear in the same model on GSM8K (pass@1$=0.756$) or Trip Planning (pass@1$=0.010$) and that does not appear in LLaDA-Base on Countdown (pass@1$=0.143$).
+The instruct-templated condition is more model-dependent than the base condition. Dream-Instruct retains a useful pass@k profile, Llama-Instruct becomes the strongest high-$k$ model, Qwen-Instruct plateaus early, and LLaDA-Instruct has a low measured Countdown pass@128 of $0.055$. This result appears to be task- and interface-specific rather than a general failure of the checkpoint: the same model performs strongly on GSM8K, while LLaDA-Base is substantially stronger than LLaDA-Instruct on Countdown.
 
 \begin{figure}[!htbp]
 \centering
@@ -21,4 +21,4 @@ The instruct-templated condition is more model-dependent than the base condition
 \label{fig:countdown-instruct}
 \end{figure}
 
-An earlier smaller Countdown run was used to scope flat-versus-templated prompting before the canonical refreshed run reported above. The diagnostic confirms that Dream-Instruct and Qwen-Instruct shift substantially under flat prompting while LLaDA-Instruct does not, but its absolute scores are not directly comparable to the refreshed Countdown curves because of differing generation length and evaluation set; the full diagnostic is reproduced in Appendix~\ref{sec:appendix-countdown-prompt}.
+An earlier, smaller Countdown run was used only to inspect the effect of flat versus templated prompting before the main run was fixed. It shows that Dream-Instruct and Qwen-Instruct change substantially under flat prompting, while LLaDA-Instruct changes less. Because that diagnostic used a different generation length and evaluation set, its absolute scores are not compared with the main Countdown curves. The diagnostic table is included in Appendix~\ref{sec:appendix-countdown-prompt} for traceability.

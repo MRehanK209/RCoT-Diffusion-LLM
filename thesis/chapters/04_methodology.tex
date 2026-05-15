@@ -3,21 +3,19 @@
 
 \subsection{Benchmarks}
 
-The experiments use three benchmarks designed to stress different aspects of reasoning and structured generation.
+The experiments use three benchmarks that differ in answer length and constraint structure.
 
-\textbf{GSM8K} is a grade-school mathematics benchmark with numeric final answers. In this thesis, it serves primarily as a reasoning sanity check and as a sensitive probe of prompt formatting and answer extraction effects.
+\textbf{GSM8K} is a grade-school mathematics benchmark with numeric final answers.
 
-\textbf{Countdown-cd4} is a constrained arithmetic planning task. Each problem provides four numbers and a target, and the model must construct a valid sequence of arithmetic operations that reaches the target. This benchmark is central to the thesis because it enables a controlled comparison between single-sample accuracy and many-sample search behavior.
+\textbf{Countdown-cd4} is a constrained arithmetic planning task. Each problem provides four numbers and a target, and the model must construct a valid sequence of arithmetic operations that reaches the target.
 
-\textbf{Trip Planning} is a structured natural-language planning benchmark in which the model must generate an itinerary with ordered city visits and exact stay durations. Unlike Countdown, the output is longer and expressed in natural language, but it must still satisfy a strict schema. This benchmark tests whether patterns observed in symbolic planning generalize to structured text generation.
+\textbf{Trip Planning} is a structured natural-language planning benchmark. The model must generate an itinerary with ordered city visits and exact stay durations. Unlike Countdown, the output is longer and written in natural language.
 
 Together, these benchmarks span a progression from numeric reasoning (GSM8K), to symbolic planning (Countdown), to structured natural-language planning (Trip Planning).
 
 \subsection{Models and Prompt Modes}
 
 The evaluation compares two masked diffusion language model families, \textbf{LLaDA} and \textbf{Dream}, with two autoregressive families, \textbf{Qwen2.5} and \textbf{Llama~3.1}. Each family is evaluated at approximately 7B--8B parameter scale, using both base and instruction-tuned variants where available.
-
-The goal is not to rank individual checkpoints in isolation, but to compare how diffusion-style denoising and autoregressive left-to-right generation behave under identical evaluation conditions.
 
 Prompt format is treated as an experimental variable because instruction-tuned models are typically trained with chat-style templates, while many reasoning benchmarks are written as flat completion prompts. Three prompt modes are used:
 
@@ -27,17 +25,17 @@ Prompt format is treated as an experimental variable because instruction-tuned m
     \item \textbf{\texttt{instruct\_flat}}: The same flat benchmark text is given to an instruction-tuned model without a chat wrapper. This serves as a diagnostic for prompt-interface sensitivity.
 \end{itemize}
 
-The flat and templated instruct settings are not treated as interchangeable. They test different interfaces to the same checkpoint: one follows the chat format expected by instruction tuning, while the other keeps the benchmark in the completion-style format used for base models. The empirical effect of this choice is quantified in the prompt-sensitivity results in Section~\ref{sec:results-gsm8k} and Figure~\ref{fig:gsm8k-prompt}.
+The flat and templated instruct settings are not interchangeable: one follows the chat format expected by instruction tuning, while the other keeps the benchmark in the completion-style format used for base models. The prompt-sensitivity results in Section~\ref{sec:results-gsm8k} and Figure~\ref{fig:gsm8k-prompt} quantify the effect of this choice.
 
 \subsection{Unified Evaluation Pipeline}
 \label{sec:unified-evaluation-pipeline}
 
-Figure~\ref{fig:eval-pipeline-ar-vs-dllm} summarizes the full evaluation design. The benchmark instance and prompt mode define a common input interface. After that point, the two generation paradigms differ only in the inference mechanism: autoregressive models produce tokens left-to-right, whereas diffusion models generate through iterative masked-token refinement. Their raw completions are then returned to a shared scoring pipeline. This separation is essential for the thesis because it makes the comparison a controlled study of generation paradigm under matched prompts, datasets, parsers, temperature settings, and sample budgets.
+All models are evaluated through the same measurement pipeline after generation. A benchmark instance and prompt mode first define the input. The model then produces completions through its own inference mechanism: autoregressive models decode left to right, while diffusion models use iterative masked-token refinement. The resulting completions are passed to the same task-specific parsers and aggregate metrics. This design keeps the generation mechanism separate from the scoring procedure.
 
 \begin{figure}[!htbp]
     \centering
     \includegraphics[width=0.98\textwidth]{images/eval_pipeline_ar_vs_dllm.png}
-    \caption{Overall evaluation pipeline for the autoregressive and diffusion model comparison. The model-specific generation path is separated from the shared measurement path: prompt construction precedes paradigm-specific inference, while parser-controlled scoring, pass@k aggregation, and per-question analyses are applied uniformly to the resulting completions.}
+    \caption{Unified evaluation pipeline. Prompt construction is shared, generation is model-specific, and parsing, pass@k aggregation, and per-question analyses are applied to all completions.}
     \label{fig:eval-pipeline-ar-vs-dllm}
 \end{figure}
 
@@ -51,28 +49,26 @@ The number of samples per question depends on the benchmark:
     \item Trip Planning: up to $64$ samples (due to longer outputs and stricter parsing)
 \end{itemize}
 
-For each question, let $n$ be the number of generated samples and $c$ the number of correct samples. The pass@k estimator is defined as:
+For each question, let $n$ be the number of generated samples and $r$ the number of correct samples. The pass@k estimator is defined as:
 
 \begin{equation}
-    \mathrm{pass@}k = 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}.
+    \operatorname{pass@}k = 1 - \frac{\binom{n-r}{k}}{\binom{n}{k}}.
 \end{equation}
 
-This metric estimates the probability that at least one of $k$ sampled outputs is correct. It is therefore a measure of \emph{test-time search capability}, rather than single-output accuracy. This distinction is central to the thesis: deterministic accuracy measures the quality of the first sample, while pass@k measures whether a model can generate a set of candidates that contains a correct solution.
+This metric estimates the probability that at least one of $k$ sampled outputs is correct. Deterministic accuracy measures the first sample, while pass@k measures whether the sampled candidate set contains a correct solution.
 
 \subsection{Parser-Controlled Scoring}
 \label{sec:parser-details}
 \label{sec:methodology-parsers}
 
-Figure~\ref{fig:parser-pipeline} expands the parser-controlled scoring layer from Figure~\ref{fig:eval-pipeline-ar-vs-dllm}. Raw model completions are not compared directly to gold answers. Instead, they pass through a task-specific parser that applies extraction and validation rules to convert free-form outputs into structured correctness labels.
-
-This parser layer is part of the measurement system. A completion can fail for three distinct reasons:
+Raw completions are not scored by string matching alone. Each benchmark has a parser that extracts the relevant answer structure and checks task-specific validity. A sample can fail because the parser cannot read the output, because the answer is not in the required format, or because the parsed answer violates the task constraints:
 \begin{itemize}
     \item \textbf{Parse failure}: the output cannot be interpreted structurally
     \item \textbf{Format failure}: the answer is present but not in the required format
     \item \textbf{Validity failure}: the structured output violates task constraints
 \end{itemize}
 
-Only outputs that pass parsing and validation are converted into sample-level correctness indicators.
+Only parsed and validated outputs are converted into correctness labels.
 
 \begin{figure}[!htbp]
     \centering
@@ -188,7 +184,7 @@ Only outputs that pass parsing and validation are converted into sample-level co
     
     \end{tikzpicture}%
     }
-    \caption{Evaluation pipeline with an explicit parser decision stage. After raw completions enter the parser, the workflow branches: failures are categorized as parse, format, or validity failures, while successful parses continue to task-specific scoring and then to sample-level correctness vectors and aggregate metrics.}
+    \caption{Parser-controlled scoring. Raw completions are parsed and validated before they are converted into task-specific correctness vectors and aggregate metrics.}
     \label{fig:parser-pipeline}
     \end{figure}
 
@@ -200,15 +196,15 @@ Only outputs that pass parsing and validation are converted into sample-level co
 
 \subsection{Per-Question Accuracy Analysis}
 
-Aggregate metrics such as pass@k summarize overall performance but do not reveal whether different models succeed on the same questions. To analyze this, per-question correctness rates are computed by measuring the fraction of correct samples for each question and model.
+Aggregate metrics such as pass@k summarize overall performance, but they do not reveal whether different models succeed on the same questions. For each question and model, the analysis records the fraction of generated samples that are correct.
 
-Pearson correlation between these per-question vectors quantifies alignment in model behavior. High correlation indicates that two models succeed and fail on similar instances, while low correlation suggests complementary strengths.
+Pearson correlation between these per-question vectors measures behavioral alignment. High correlation means that two models tend to succeed and fail on similar instances; lower correlation indicates more complementary behavior.
 
-This representation also enables an \textbf{oracle union analysis}, which estimates the maximum achievable performance if an ideal selector could choose the correct output from a set of models. While not a deployable method, it provides an upper bound on the potential benefit of combining diffusion and autoregressive approaches.
+The same representation enables an \textbf{oracle union analysis}. This analysis counts a question as solved if any model in a set produced a correct sample. It is not a deployable method, because it assumes access to correctness at selection time, but it shows how much complementarity exists in the sampled outputs.
 
 \subsection{Evaluation Conditions}
 
-All comparisons are conducted under controlled conditions, ensuring that models within each experiment share the same dataset split, prompt format, parser, temperature, and sample budget.
+Models within each experiment share the same dataset split, prompt format, parser, temperature, and sample budget.
 
 \begin{itemize}
     \item GSM8K: 128 questions, 128 samples (main); 256 questions, 16 samples (few-shot ablation)

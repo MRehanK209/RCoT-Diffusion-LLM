@@ -1,7 +1,7 @@
-\subsection{GSM8K as a prompt-sensitivity sanity check}
+\subsection{GSM8K as a saturated diagnostic benchmark}
 \label{sec:results-gsm8k}
 
-GSM8K behaves as a saturating sanity check rather than a paradigm-ranking benchmark. All four model families reach pass@128 above $0.97$ in the main templated runs, and two of four reach $1.000$, so the benchmark cannot separate paradigms at large $k$. AIME or MATH-Beyond would be needed for that purpose. What GSM8K does separate is prompt format and few-shot count, where the effects are large enough to dominate cross-paradigm differences. Diffusion instruct models lead in zero-shot mode (LLaDA-Instruct pass@1$=0.749$, Dream-Instruct $0.734$ versus Qwen-Instruct $0.534$ and Llama-Instruct $0.488$); $4$-shot prompting essentially closes that gap, raising Qwen-Instruct to $0.789$ and Llama-Instruct to $0.782$. The full $0$-shot, $4$-shot, base, and instruct breakdowns are reproduced in Appendix~\ref{sec:appendix-gsm8k}.
+GSM8K behaves more like a diagnostic benchmark than a clean paradigm-ranking task in these runs. All four model families reach pass@128 above $0.97$ in the main templated runs, and two of four reach $1.000$. The benchmark is therefore most useful here for checking prompt format, few-shot setup, and answer extraction. Diffusion instruct models lead in zero-shot mode (LLaDA-Instruct pass@1$=0.749$, Dream-Instruct $0.734$ versus Qwen-Instruct $0.534$ and Llama-Instruct $0.488$); $4$-shot prompting essentially closes that gap, raising Qwen-Instruct to $0.789$ and Llama-Instruct to $0.782$. The full $0$-shot, $4$-shot, base, and instruct breakdowns are reproduced in Appendix~\ref{sec:appendix-gsm8k}.
 
 The largest single prompt-format effect appears here. Removing the chat template from Llama-Instruct on GSM8K drops pass@1 from $0.782$ to $0.211$, a $57$-point swing on a benchmark on which both prompt modes converge to pass@128$=1.000$. Figure~\ref{fig:gsm8k-prompt} reports the pass@1 difference between templated and flat instruct prompting.
 
@@ -12,4 +12,4 @@ The largest single prompt-format effect appears here. Removing the chat template
 \label{fig:gsm8k-prompt}
 \end{figure}
 
-The GSM8K runs record prompt format and few-shot count as explicit experimental variables before the more diagnostic Countdown and Trip Planning benchmarks that follow.
+The GSM8K runs establish prompt format and few-shot count as experimental variables before the more discriminating Countdown and Trip Planning benchmarks.

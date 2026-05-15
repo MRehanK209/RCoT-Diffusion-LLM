@@ -1,7 +1,7 @@
 \subsection{Hyperparameter sweep and diffusion generation settings}
 \label{sec:results-hyperparameters}
 
-A $25$-configuration GSM8K sweep over generation length $L\in\{128, 256\}$, denoising steps $S\in\{32, 64, 128, 256\}$, and block length $B\in\{32, 64, 128, 256\}$ was run for both diffusion families before the paradigm comparison was finalized. Two findings from the sweep are relevant to the remaining results.
+A $25$-configuration GSM8K sweep was run for each diffusion family before the paradigm comparison was finalized. The observed configurations cover generation lengths $L\in\{128, 256\}$, denoising steps $S\in\{32, 64, 128, 256\}$, and block lengths $B\in\{32, 64, 128, 256\}$, though not every Cartesian combination appears for $L=128$. Two findings from the sweep are relevant to the remaining results.
 
 \paragraph{Step count is effectively invariant for Dream under fast-dLLM.} At fixed $L=256, B=32$, Dream's pass@1 is $0.707$, $0.707$, $0.705$, $0.707$ for $S\in\{32, 64, 128, 256\}$, with wall times of $11.8$, $11.4$, $11.7$, and $12.1$ minutes. An eightfold change in nominal step count produces no meaningful quality or wall-time change in these runs, and the same flat profile holds across the tested $(L, B)$ cells. LLaDA behaves oppositely: at $L=256, B=128$ its pass@1 is $0.076$, $0.397$, $0.699$, $0.710$ across the same $S$ range, and wall time scales from $3.7$ to $14.5$ minutes.
 

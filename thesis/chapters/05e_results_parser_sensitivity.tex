@@ -1,7 +1,7 @@
 \subsection{Parser sensitivity and failure rates}
 \label{sec:parser-results}
 
-The measured pass@k story depends on the parser layer, but the dependence is benchmark-specific. On GSM8K and Countdown, outright parser crashes are almost nonexistent; the more important issue is output-format compliance. On Trip Planning, malformed plans can dominate the error profile, especially for base prompts and for Llama-Instruct under the templated prompt. Figure~\ref{fig:parser-failure-rates} summarizes the main rates.
+The parser affects the measured scores differently across benchmarks. GSM8K and Countdown rarely fail at the parser-entry stage, so their main errors are wrong answers, invalid equation chains, or missing required answer formatting. Trip Planning is different: many outputs are rejected before semantic scoring because the itinerary structure is malformed. For that benchmark, accuracy reflects both planning quality and compliance with the parser's expected format.
 
 \begin{figure}[!htbp]
 \centering

@@ -5,6 +5,19 @@
 \input{packages}
 \input{definitions}
 
+\aiProjectName{RCoT-Diffusion-LLM}
+\aiDomain{Natural language processing}
+\aiKeyApplication{Repository inspection, artifact summaries, figures, and editing.}
+\aiContactName{Muhammad Rehan Khalid}
+\aiContactEmail{m.khalid@stud.uni-goettingen.de}
+\aiContactAffiliation{University of G\"ottingen}
+\aiModels{ChatGPT, Codex}
+\aiImprovingContent{Manuscript organization and wording.}
+\aiGeneratingCode{Repository inspection and figure scripts.}
+\aiWhyUse{Efficiency and audit support.}
+\aiMitigateErrors{Manual validation of claims, numbers, citations, and interpretations.}
+\aiMinimizeHarm{Artifact-backed results only.}
+
 \begin{document}
 \sloppy
 \pagenumbering{Roman}
@@ -16,18 +29,19 @@
 \addcontentsline{toc}{section}{Declaration of Independent Work}
 I hereby declare that I have written this thesis independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used according to established academic citation rules. The empirical analysis is based on the evaluation runs and result artifacts produced for this thesis.
 
-\vspace{2cm}
-G\"ottingen, 7 April 2026
-
-\vspace{1.2cm}
-\noindent\rule{6cm}{0.4pt}\hfill\rule{6cm}{0.4pt}\par
-\noindent Place, Date\hfill Signature
+\vspace{3.2cm}
+\noindent
+\begin{tabular*}{\textwidth}{@{}p{6cm}@{\extracolsep{\fill}}p{6cm}@{}}
+\underline{\makebox[6cm][l]{G\"ottingen, 25 May 2026}} &
+\underline{\makebox[6cm][l]{}}\\[0.45em]
+Place, Date & Signature
+\end{tabular*}
 \cleardoublepage
 
 \section*{Abstract}
 \markboth{Abstract}{Abstract}
 \addcontentsline{toc}{section}{Abstract}
-This thesis investigates whether chain-of-thought reasoning and planning should be evaluated differently for diffusion and autoregressive language models. It compares LLaDA-8B and Dream-v0-7B with Qwen2.5-7B and Llama-3.1-8B across GSM8K, Countdown-cd4, and Trip Planning. The evaluation combines a diffusion hyperparameter sweep, deterministic accuracy, stochastic pass@k, parser-controlled answer extraction, prompt-mode ablations, and per-question accuracy analysis. The central finding is protocol dependence: diffusion models are stronger in deterministic and low-$k$ planning settings, while autoregressive models improve more under large-$k$ sampling and can overtake at higher sample budgets. GSM8K is saturated at high $k$ and mainly exposes prompt and parser sensitivity. Per-question correlations and oracle unions suggest that the paradigms solve overlapping but non-identical subsets of problems, making complementarity a more defensible conclusion than universal paradigm superiority.
+Autoregressive language models generate reasoning traces one token at a time, which makes each later step depend on choices that have already been fixed. In contrast, masked diffusion language models generate through iterative denoising, allowing them to refine multiple positions before producing the final answer. This thesis compares these two generation paradigms on reasoning and planning tasks under a shared evaluation pipeline. The study evaluates LLaDA, Dream, Qwen2.5, and Llama~3.1 on GSM8K, Countdown-cd4, and Trip Planning. The results show a budget-dependent trade-off rather than a universal winner. On Countdown-cd4, diffusion base models perform best at pass@1, while Qwen-Base and Llama-Base overtake them by pass@128. On Trip Planning, Dream variants lead the deterministic configuration ranking, but the strongest available high-budget result comes from a flat-prompt Llama-Instruct run. GSM8K is close to saturated at high $k$ and mainly serves as a check on prompt format and answer extraction. Per-question analyses show that the models solve overlapping but non-identical subsets of problems. The findings therefore support a complementary view of diffusion and autoregressive reasoning models, with future work pointing toward verification, routing, and selection methods.
 
 \vfill
 \noindent\footnotesize\textbf{Evaluation code and artifacts:} \url{https://github.com/MRehanK209/RCoT-Diffusion-LLM}
@@ -160,7 +174,7 @@ R. Yu, Q. Li, and X. Wang,
 \bibitem{zhang2025embedding}
 S. Zhang, Y. Zhao, L. Geng, A. Cohan, A. T. Luu, and C. Zhao,
 ``Diffusion vs. Autoregressive Language Models: A Text Embedding Perspective,''
-\emph{Proceedings of EMNLP}, 2025.
+\emph{Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing}, pp. 4273--4303, Suzhou, China: Association for Computational Linguistics, 2025. doi:10.18653/v1/2025.emnlp-main.213.
 
 \bibitem{kim2025beyond}
 M. Kim, C. Hooper, A. Tomar, C. Xu, M. Farajtabar, M. W. Mahoney, K. Keutzer, and A. Gholami,
@@ -205,7 +219,10 @@ W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. Yu, J. E. Gonzalez, H. Zhang, 
 \end{thebibliography}
 
 
+\clearpage
+\newgeometry{top=1.4cm,bottom=1.4cm,left=1.6cm,right=1.6cm}
 \section*{AI Usage Statement}
-ChatGPT/Codex was used as an assistance tool to inspect the evaluation repository, summarize existing result artifacts, generate figures from stored JSON outputs, and improve the organization and wording of the LaTeX manuscript. The author remains responsible for all claims, numerical values, citations, and interpretations. No experimental numbers are introduced without corresponding result artifacts in the evaluation repository.
+\makeAIUsageCard
+\restoregeometry
 
 \end{document}

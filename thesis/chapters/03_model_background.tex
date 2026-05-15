@@ -1,17 +1,188 @@
 \section{Model Background and Thesis Hypothesis}
 \label{sec:model-background}
 
-\subsection{Autoregressive Generation}
-For an autoregressive model, a sequence $x=(x_1,\ldots,x_T)$ is modeled as
+The previous chapter positioned autoregressive and diffusion language models in
+the literature. This chapter fixes the notation used for the comparison and
+states the hypothesis in terms of the two generation interfaces. The goal is
+not to re-review the model families, but to make clear why left-to-right
+decoding and masked denoising imply different evaluation questions.
+
+Let $c$ denote a benchmark prompt and let $y=(y_1,\ldots,y_T)$ denote the
+completion generated for that prompt. The evaluation ultimately observes a set
+of completions
 \begin{equation}
-    p(x)=\prod_{t=1}^{T}p(x_t \mid x_{<t}).
+    \mathcal{C}_n(c)=\{\hat{y}^{(1)},\ldots,\hat{y}^{(n)}\},
 \end{equation}
-Generation proceeds left to right. Greedy decoding chooses the most likely next token at every step, while temperature sampling draws from a softened or sharpened distribution. Repeated stochastic sampling can therefore explore many different reasoning traces. This gives autoregressive models a natural route to high pass@k performance when many attempts are affordable: each sample may follow a different path through the solution space.
+where $n=1$ in deterministic or first-sample evaluation and $n>1$ in
+many-sample evaluation. The model architecture determines how each
+$\hat{y}^{(j)}$ is produced. Chapter~\ref{sec:methodology} describes how these
+candidate sets are parsed and scored; this chapter focuses on the probability
+model and generation process.
+
+\subsection{Autoregressive Generation}
+For an autoregressive model, a completion $y$ over vocabulary $\mathcal{V}$ is
+modeled conditionally on the prompt by the left-to-right factorization
+\begin{equation}
+    p_\theta(y\mid c)
+    =
+    \prod_{t=1}^{T}p_\theta(y_t \mid c,y_{<t}).
+\end{equation}
+In a decoder-only Transformer, this factorization is implemented with causal
+self-attention \cite{vaswani2017attention}. If $H$ denotes the $T\times d$
+hidden-state matrix at a given layer, a single attention head computes
+\begin{equation}
+    Q=HW_Q,\qquad K=HW_K,\qquad V_{\mathrm{attn}}=HW_V,
+\end{equation}
+\begin{equation}
+    \operatorname{Attn}_{\mathrm{causal}}(H)
+    =
+    \operatorname{softmax}\!\left(\frac{QK^\top+M_{\mathrm{causal}}}{\sqrt{d_k}}\right)V_{\mathrm{attn}},
+\end{equation}
+where $M_{\mathrm{causal}}(i,j)=0$ for $j\leq i$ and
+$M_{\mathrm{causal}}(i,j)=-\infty$ for $j>i$. The mask prevents position $i$
+from attending to future tokens. Training uses teacher forcing with the
+negative log-likelihood objective
+\begin{equation}
+    \mathcal{L}_{\mathrm{AR}}(\theta)
+    =
+    -\sum_{t=1}^{T}\log p_\theta(y_t\mid c,y_{<t}).
+\end{equation}
+At inference time, the generated prefix $\hat{y}_{<t}$ is fed back into the
+model and the next token is chosen from
+\begin{equation}
+    \hat{y}_t \sim p_\theta(\cdot \mid c,\hat{y}_{<t};\tau),
+\end{equation}
+where $\tau$ denotes the sampling temperature. If $z_t(v)$ is the logit assigned
+to token $v$ at step $t$, temperature sampling uses
+\begin{equation}
+    p_\theta(v\mid c,\hat{y}_{<t};\tau)
+    =
+    \frac{\exp(z_t(v)/\tau)}
+    {\sum_{u\in\mathcal{V}}\exp(z_t(u)/\tau)}.
+\end{equation}
+Greedy decoding is the limiting case in which the most likely next token is
+chosen at every step. Stochastic decoding draws multiple independent
+left-to-right trajectories,
+\begin{equation}
+    \hat{y}^{(j)}
+    =
+    (\hat{y}^{(j)}_1,\ldots,\hat{y}^{(j)}_T),
+    \qquad j=1,\ldots,n,
+\end{equation}
+so additional samples expand the candidate set that the evaluator can search
+\cite{chen2021humaneval}. The important architectural constraint is that the
+ordering of decisions is fixed by token position: once $\hat{y}_t$ has been
+sampled, later steps condition on it rather than revising it directly.
 
 \subsection{Masked Diffusion Generation}
-Masked diffusion language models begin from a masked or partially masked sequence and iteratively refine tokens over a fixed number of diffusion steps. The practical generation configuration includes generation length, block length, and the number of denoising steps. Instead of committing permanently to each left-to-right token, the model can update a block of positions using broader sequence context. This may concentrate probability mass around coherent low-budget solutions, but it may also reduce the diversity gained from repeated sampling.
+Masked diffusion language models use a different generative interface. Let
+$m$ denote a special mask token and let $s\in\{0,\ldots,S\}$ index the
+diffusion step, with $s=0$ representing the clean sequence. A simple absorbing
+mask corruption process replaces each token independently with probability
+$\alpha_s$ \cite{austin2021structured,nie2025llada}:
+\begin{equation}
+    q(x_s^i \mid x_0^i)
+    =
+    (1-\alpha_s)\,\operatorname{ind}\{x_s^i=x_0^i\}
+    +
+    \alpha_s\,\operatorname{ind}\{x_s^i=m\},
+\end{equation}
+where $\alpha_0=0$ and $\alpha_S$ is close to one. The resulting corrupted
+sequence $x_s$ contains a subset of visible tokens and a subset of masked
+positions.
+
+Equivalently, the forward corruption distribution over the whole sequence is
+\begin{equation}
+    q(x_s\mid x_0)
+    =
+    \prod_{i=1}^{T}q(x_s^i\mid x_0^i),
+\end{equation}
+with a transition matrix that sends each clean token either to itself or to the
+absorbing mask state. This factorized forward process is simple; the modeling
+work is in learning the reverse denoising distribution.
+
+The denoising network predicts the clean token at each masked position from
+the whole partially observed sequence. Its self-attention is not constrained by
+a causal mask; for a hidden-state matrix $H$, the corresponding attention head
+has the form
+\begin{equation}
+    \operatorname{Attn}_{\mathrm{full}}(H)
+    =
+    \operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V_{\mathrm{attn}}.
+\end{equation}
+The model distribution at position $i$ is
+\begin{equation}
+    p_\theta(x_0^i \mid x_s,s)
+    =
+    \operatorname{softmax}(f_\theta(x_s,s)_i),
+\end{equation}
+and the masked-denoising objective can be written as
+\begin{equation}
+    \mathcal{L}_{\mathrm{dLLM}}(\theta)
+    =
+    \operatorname{E}_{x_0,s,x_s}
+    \left[
+    -\sum_{i:x_s^i=m}\log p_\theta(x_0^i\mid x_s,s)
+    \right].
+\end{equation}
+Here \(s\) is sampled from the training-time noise schedule and \(x_s\) is
+sampled from the forward corruption process \(q(x_s \mid x_0)\).
+Unlike the autoregressive loss, this objective scores multiple masked positions
+conditioned on the same partially observed sequence. The conditioning context
+can include tokens on both sides of a masked position whenever those tokens are
+visible at step $s$.
+
+Generation reverses the corruption process. Starting from a fully or mostly
+masked sequence $x_S$, the model predicts token distributions for the masked
+positions and commits a subset $U_s$ of them at each reverse step:
+\begin{equation}
+    x_{s-1}^i =
+    \begin{cases}
+    \hat{x}_0^i, & i\in U_s,\ \hat{x}_0^i\sim p_\theta(\cdot\mid x_s,s),\\
+    x_s^i, & i\notin U_s.
+    \end{cases}
+\end{equation}
+Under this decoding abstraction, positions selected into \(U_s\) are committed,
+while the remaining masked positions can still be refined in later steps. The
+contrast with autoregressive decoding is therefore not unlimited backtracking,
+but the ability to choose and fill multiple positions using bidirectional
+visible context.
+The subset $U_s$ may be chosen by a schedule, by block structure, or by model
+confidence, depending on the implementation \cite{nie2025llada,ye2025dream}.
+The corresponding reverse kernel can be summarized as
+\begin{equation}
+    p_\theta(x_{s-1}\mid x_s)
+    =
+    \prod_{i\in U_s}p_\theta(x_{s-1}^i\mid x_s,s)
+    \prod_{i\notin U_s}\operatorname{ind}\{x_{s-1}^i=x_s^i\}.
+\end{equation}
+The practical generation configuration therefore includes generation length,
+block length, the number of denoising steps, and the schedule
+$U_S,\ldots,U_1$. Instead of committing permanently to each left-to-right token,
+the model can update a block of positions using broader sequence context. The
+contrast with AR decoding is not that one process is automatically better, but
+that the two processes organize test-time computation differently:
+\begin{equation}
+    \mathrm{AR:}\quad t=1\rightarrow T,
+    \qquad
+    \mathrm{dLLM:}\quad s=S\rightarrow 0,\quad U_s\subseteq\{1,\ldots,T\}.
+\end{equation}
+This interface may concentrate computation on refining a candidate sequence,
+which motivates testing whether diffusion models behave differently under
+deterministic, low-budget, and high-budget pass@k evaluation.
 
 \subsection{Models Under Study}
-LLaDA and Dream fit the masked diffusion family. Their generation is controlled through generation length, diffusion steps, and block length. Qwen2.5 and Llama 3.1 fit the autoregressive family. Their main pass@k runs use vLLM sampling with generation length and temperature, but no diffusion block or denoising schedule.
+LLaDA and Dream represent the masked diffusion setting
+\cite{nie2025llada,ye2025dream}. Their inference depends on generation length,
+block length, and the number of denoising steps. Qwen2.5 and Llama~3.1
+represent the autoregressive setting \cite{qwen2024qwen25,grattafiori2024llama}.
+Their main stochastic runs use vLLM sampling with a fixed generation length and
+temperature, without a diffusion block or denoising schedule.
 
-The thesis hypothesis is therefore: diffusion decoding may concentrate probability mass around coherent low-budget solutions, while autoregressive temperature sampling may explore a broader candidate set and therefore benefit more from large-$k$ pass@k. The results support this pattern clearly on Countdown-cd4 and partially on Trip Planning, while GSM8K is saturated at high $k$ and mainly reveals prompt and parser sensitivity.
+The hypothesis tested in the experiments follows from this contrast. If
+diffusion decoding spends more computation refining a candidate sequence, it
+may improve first-sample or low-budget performance on tasks that require
+globally consistent plans. That advantage may disappear when many samples are
+available, because autoregressive models can use repeated stochastic decoding
+as a form of test-time search. The evaluation therefore tracks performance
+across the sampling budget instead of reporting only one accuracy number.

@@ -1,14 +1,132 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Autoregressive language models are the dominant interface for contemporary chain-of-thought reasoning and planning. They generate left to right: each token is sampled conditioned on an already committed prefix, and later tokens cannot directly revise earlier choices. This interface is simple, scalable, and highly effective, but reasoning and planning tasks often require global consistency, correction of earlier assumptions, and exploration of multiple candidate traces rather than a single irreversible continuation \cite{vaswani2017attention,brown2020language,wei2022chain,wang2023selfconsistency}.
+Large language models are often evaluated as if reasoning quality were a
+property of a single generated answer. In practice, the answer is produced by a
+decoding process. Most current language-model reasoning systems use
+autoregressive decoding: they extend a prefix from left to right, and every
+later token is conditioned on choices that have already been made
+\cite{vaswani2017attention,brown2020language}. This interface is simple,
+effective, and well supported by modern inference systems. It is also a
+particular way of spending computation. Once an early token has been emitted,
+later tokens can elaborate on it, but they do not naturally edit the prefix that
+created the current reasoning path.
 
-Diffusion language models offer a plausible alternative evaluation target because they generate through masked or iterative denoising rather than strict next-token commitment. A diffusion model can refine a partially specified sequence or block over multiple steps, so the original motivation for this thesis was that such models might produce more coherent low-budget reasoning traces and might be useful in ensemble-style reasoning where several candidate traces are generated and selected \cite{austin2021structured,nie2025llada,ye2025dream}. This is a motivation, not a superiority claim: iterative refinement could help first-sample planning, but repeated autoregressive sampling could still explore a broader set of candidate solutions.
+This matters because a reasoning benchmark does not observe an abstract model
+capability directly. It observes a completed trace, an extracted answer, and a
+scoring decision. If the trace is generated once, the evaluation rewards the
+quality of a single trajectory. If many traces are generated, the evaluation
+also rewards the model's ability to place at least one correct candidate in the
+sampled set. These two views can lead to different rankings even when the
+underlying benchmark is unchanged.
 
-The thesis therefore asks a protocol-dependent question rather than a one-sided one: do diffusion LLMs and autoregressive LLMs differ in how they trade off first-sample accuracy, sampling diversity, pass@k growth, and per-question failure modes on reasoning and planning tasks? To answer this, the study compares LLaDA, Dream, Qwen2.5, and Llama~3.1 across GSM8K, Countdown-cd4, and Trip Planning under deterministic accuracy, stochastic pass@k, parser-controlled scoring, prompt-mode ablations, and per-question correlation analysis.
+The issue becomes concrete on reasoning and planning tasks that combine local
+steps with global constraints. In Countdown-cd4, a model must use the available
+numbers in a valid arithmetic chain; one poor intermediate operation can leave
+no useful route to the target. In Trip Planning, the output must satisfy a city
+order, stay durations, and flight transitions at the same time
+\cite{xie2024travelplanner}. GSM8K is more familiar as arithmetic word-problem
+solving, but it still depends on answer extraction: a correct derivation is not
+counted by the canonical evaluator unless the final answer is presented in the
+expected form \cite{cobbe2021gsm8k}. These examples show why generation order,
+sample budget, and parser behavior are part of the measurement problem rather
+than incidental implementation details.
 
-The empirical result is not that diffusion language models generally replace autoregressive models. On the planning-oriented tasks, diffusion models often produce stronger deterministic or low-budget solutions, while autoregressive models benefit more from large-$k$ sampling and can overtake at higher sample budgets. GSM8K is saturated at high $k$ and is most useful here as a prompt-sensitivity and parser-sensitivity sanity check. The ranking therefore depends on whether the evaluation asks for one strong answer, searches over many stochastic candidates, or penalizes deviations from a task-specific output format.
+Autoregressive models should not be treated as weak baselines. Chain-of-thought
+prompting and self-consistency show that repeated sampling can recover from
+individual failed traces by producing many candidate solutions
+\cite{wei2022chain,wang2023selfconsistency}. The relevant question is therefore
+not whether autoregressive models can reason. It is how their performance is
+distributed across the evaluation budget: how much appears in the first decoded
+solution, how much appears only after many stochastic samples under pass@k-style
+evaluation \cite{chen2021humaneval}, and whether the additional samples solve
+the same questions or different ones.
 
-\paragraph{Contributions.} The thesis makes three contributions. First, it provides a controlled comparison of LLaDA, Dream, Qwen2.5, and Llama~3.1 at similar model scale across three reasoning and planning benchmarks, preceded by a diffusion hyperparameter sweep that characterizes the generation settings used in the main comparison \cite{nie2025llada,ye2025dream,qwen2024qwen25,grattafiori2024llama,cobbe2021gsm8k,xie2024travelplanner}. Second, it reports a protocol-dependent ranking pattern: diffusion models are stronger in deterministic or low-$k$ planning settings, while autoregressive models gain more from stochastic sampling and can overtake at high pass@k. Third, it adds parser-sensitivity, sampling-diversity, per-question correlation, and oracle-union analyses to show that the paradigms solve overlapping but non-identical subsets of problems. The oracle analysis is treated only as an upper bound on complementarity, not as a deployable ensemble method.
+Diffusion large language models (dLLMs) provide a useful contrast because they
+generate through masked or iterative denoising rather than strict next-token
+commitment. A dLLM can begin from a masked or partially specified sequence and
+refine multiple positions over a sequence of denoising steps, following the
+discrete denoising view of text generation \cite{austin2021structured}. Recent
+systems such as LLaDA and Dream scale this interface to large language models
+\cite{nie2025llada,ye2025dream}. This interface suggests a different allocation
+of test-time computation. It may help produce coherent first samples on tasks
+where a plan must satisfy several constraints at once, or it may produce
+candidate sets that behave differently under pass@k evaluation. These are
+hypotheses about the decoding interface, not assumptions that diffusion models
+are generally superior.
 
-\paragraph{Roadmap.} Chapter~\ref{sec:related-work} reviews diffusion language models, autoregressive baselines, and pass@k evaluation. Chapter~\ref{sec:model-background} states the concentration-versus-diversity hypothesis. Chapter~\ref{sec:methodology} describes the unified evaluation pipeline, benchmark tasks, prompt modes, and parser-controlled scoring. Chapter~\ref{sec:results} begins with the diffusion hyperparameter sweep, then reports GSM8K as a saturation and prompt-sensitivity check, Countdown-cd4 as the clearest pass@k ranking reversal, Trip Planning as a natural-language planning extension, and the parser, diversity, correlation, and oracle analyses. Chapter~\ref{sec:discussion} interprets the findings as protocol-dependent rather than paradigm-dominant; Chapter~\ref{sec:limitations} states what the evidence cannot support; Chapter~\ref{sec:conclusion} summarizes the resulting case for hybrid or selective-routing follow-up work.
+The central comparison is therefore not between two isolated checkpoints, but
+between two ways of turning a prompt into a set of scored candidate answers. AR
+models expose test-time search mainly through repeated left-to-right samples.
+dLLMs expose additional choices inside the denoising process, including the
+sequence length, block structure, and number of refinement steps. The
+experiments keep the downstream scoring pipeline shared so that these
+generation choices can be examined through the same parsers and aggregate
+metrics.
+
+\paragraph{Research question.}
+This thesis asks whether autoregressive models (AR models) and dLLMs differ in
+how they trade off first-sample accuracy, low-budget reasoning quality,
+high-budget pass@k growth, parser-compatible scoring, and per-question failure
+modes on reasoning and planning tasks. The comparison is deliberately framed as
+an evaluation-regime question. A single deterministic score, a low-$k$ sample
+set, and a high-$k$ pass@k curve can reward different behavior, so a
+paradigm-level conclusion should not be drawn from only one of them.
+
+The study compares two dLLM families: LLaDA and Dream
+\cite{nie2025llada,ye2025dream}. The AR side uses Qwen2.5 and Llama~3.1
+\cite{qwen2024qwen25,grattafiori2024llama}. The benchmark set covers GSM8K,
+Countdown-cd4, and Trip Planning. GSM8K and Trip Planning follow their
+published benchmark definitions \cite{cobbe2021gsm8k,xie2024travelplanner}.
+Hereafter, \emph{AR} denotes autoregressive models and \emph{dLLM} denotes
+diffusion large language models. The evaluation uses deterministic scoring,
+stochastic pass@k sampling, parser-based answer extraction, prompt-format
+ablations, and per-question correctness analysis. The design separates three
+questions that are often mixed together: which model gives the best first
+answer, which model benefits most from repeated sampling, and whether the model
+families fail on the same questions.
+
+The three benchmarks are used for different reasons. GSM8K checks arithmetic
+reasoning and answer extraction in a setting where high-budget performance is
+close to saturation. Countdown-cd4 makes the search aspect visible because a
+candidate must satisfy exact arithmetic constraints before it can be counted as
+correct. Trip Planning extends the same idea to longer natural-language plans,
+where an output can fail because the plan is wrong or because the itinerary is
+not parseable. Together, the tasks make it possible to separate reasoning
+quality, sampling behavior, and format compatibility more cleanly than a single
+accuracy number would allow.
+
+The empirical pattern is not one-sided. On the evaluated planning tasks,
+diffusion models are competitive or leading in several low-budget settings,
+while autoregressive models can gain more from repeated stochastic sampling and
+overtake at higher pass@k budgets. GSM8K gives a different lesson: because
+high-$k$ scores are close to saturated, it mainly exposes prompt-format and
+answer-extraction sensitivity. The thesis therefore treats complementarity as a
+more plausible organizing idea than replacement.
+
+\paragraph{Contributions.}
+This thesis makes three contributions:
+\begin{itemize}
+    \item It provides a matched evaluation of two diffusion model families and
+    two autoregressive model families at similar scale across arithmetic
+    reasoning, symbolic planning, and structured natural-language planning.
+    \item It shows that rankings change with the sampling budget: diffusion
+    models are competitive or leading in several low-budget settings, while
+    autoregressive models can overtake when many stochastic samples are
+    available.
+    \item It adds parser-sensitivity, normalized-answer diversity,
+    per-question correlation, and oracle-union analyses to show where the
+    paradigms overlap and where they remain complementary.
+\end{itemize}
+
+\paragraph{Roadmap.}
+Chapter~\ref{sec:related-work} reviews autoregressive, masked, and diffusion
+language modeling, with emphasis on what prior work leaves unresolved for
+reasoning and planning evaluation. Chapter~\ref{sec:model-background} gives the
+formal generation background and states the hypothesis tested in the thesis.
+Chapter~\ref{sec:methodology} describes the benchmarks, prompt modes,
+generation settings, and parsers. Chapter~\ref{sec:results} presents the main
+results, moving from the diffusion hyperparameter sweep to GSM8K,
+Countdown-cd4, Trip Planning, parser effects, sampling behavior, and
+per-question analyses. Chapters~\ref{sec:discussion} to~\ref{sec:conclusion}
+discuss the findings, limitations, and conclusions.

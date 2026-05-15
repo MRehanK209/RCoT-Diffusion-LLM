@@ -1,7 +1,7 @@
 \section{Results}
 \label{sec:results}
 
-The results are organized around the evaluation pipeline used for the main comparison. The chapter begins with the diffusion hyperparameter sweep because generation length, block length, and denoising steps define the operating regime for LLaDA and Dream. It then reports GSM8K as a prompt-sensitivity and saturation sanity check, Countdown-cd4 as the clearest pass@k ranking reversal, and Trip Planning as a natural-language planning extension with stricter parser constraints. The remaining subsections report parser statistics, diversity measurements, and per-question correlation and oracle-union analyses.
+The results are organized by the questions that the evaluation pipeline is meant to separate. The chapter first reports the diffusion hyperparameter sweep, because generation length, denoising steps, and block length define the operating regime for LLaDA and Dream. It then uses GSM8K as a prompt-format and parser-sensitivity check, Countdown-cd4 as the clearest budget-dependent ranking reversal, and Trip Planning as a structured natural-language planning task. The final sections examine parser failures, sampling gains, normalized-answer diversity, per-question correlations, and oracle unions.
 
 Detailed numeric tables are kept in Appendix~\ref{sec:appendix-detailed-results}. The main chapter uses figures and short numerical comparisons only when they are needed to support the argument.
 

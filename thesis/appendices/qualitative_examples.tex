@@ -3,6 +3,7 @@
 The following compact examples are extracted from the thesis generation JSON files. Long inputs and outputs are wrapped using \texttt{\textbackslash seqsplit} so that they break cleanly across lines.
 
 \subsection{Countdown-cd4 Base}
+The Countdown examples show raw continuations from the generation files. When a completion continues into the next prompt with an \texttt{Input:} suffix, the parser evaluates the leading comma-separated equation chain.
 
 \paragraph{dLLM-only solved.}
 \textbf{Question.} \seqsplit{23,10,3,28,39}\\
@@ -16,30 +17,30 @@ The following compact examples are extracted from the thesis generation JSON fil
 
 \paragraph{Both paradigms solved.}
 \textbf{Question.} \seqsplit{57,61,22,15,41}\\
-\textbf{LLaDA.} \seqsplit{57+21=78,22+15=37,78-37=41 Input: 9}\\
+\textbf{Dream.} \seqsplit{61-57=4,22+4=26,26+15=41 Input: 99,5}\\
 \textbf{Qwen.} \seqsplit{61+22=83,57-15=42,83-42=41 Input: 60}
 
 \paragraph{Neither paradigm solved.}
 \textbf{Question.} \seqsplit{2,52,20,73,57}\\
-\textbf{LLaDA.} \seqsplit{52-2=50,73-20=53,50+53=57 Input: 5,}\\
+\textbf{LLaDA.} \seqsplit{52-2=50,73-20=53,50+53=57 Input: 5,} (invalid arithmetic: $50+53$ is not $57$).\\
 \textbf{Qwen.} \seqsplit{52-2=50,73-20=53,50+53=103 Input: 79}
 
 \subsection{Trip Planning Base}
 
 \paragraph{dLLM-only solved.}
 \textbf{Question.} \seqsplit{Hamburg**London**Copenhagen**Tallinn**Vilnius**Zurich**Mykonos||5**2**3**3**5**5**2}\\
-\textbf{LLaDA.} Day 1--5: arriving in Hamburg and visit Hamburg for 5 days. Day 5: fly Hamburg $\to$ London. Day 5--6: visit London for 2 days. Day 6: fly London $\to$ Copenhagen. Day 6--8: visit Copenhagen for 3 days (output truncated).\\
-\textbf{Qwen.} Here is the trip plan for visiting the 7 European cities for 19 days. Day 1--5: arriving in Hamburg and visit Hamburg for 5 days. Day 5: fly Hamburg $\to$ London. Day 5--6: visit London for 2 days. Day 6: \ldots (output truncated).
+\textbf{LLaDA.} Day 1--5: arriving in Hamburg and visit Hamburg for 5 days. Day 5: fly Hamburg $\to$ London. Day 5--6: visit London for 2 days. Day 6: fly London $\to$ Copenhagen. Day 6--8: visit Copenhagen for 3 days (valid full parsed output; excerpt shown).\\
+\textbf{Qwen.} Here is the trip plan for visiting the 7 European cities for 19 days. Day 1--5: arriving in Hamburg and visit Hamburg for 5 days. Day 5: fly Hamburg $\to$ London. Day 5--6: visit London for 2 days. Day 6: \ldots (prefix shown; the full parsed output fails later in the itinerary).
 
 \paragraph{AR-only solved.}
 \textbf{Question.} \seqsplit{Athens**Mykonos**Nice**Edinburgh**Seville||5**2**6**2**2}\\
-\textbf{Qwen.} Trip plan for 5 European cities, 13 days. Day 1--5: Athens (5). Day 5 $\to$ Mykonos. Day 5--6: Mykonos (2). Day 6: \ldots\\
+\textbf{Qwen.} Trip plan for 5 European cities, 13 days. Day 1--5: Athens (5). Day 5 $\to$ Mykonos. Day 5--6: Mykonos (2). Day 6: \ldots (valid full parsed output; excerpt shown).\\
 \textbf{LLaDA.} Day 1--5: Athens (5). Day 5 $\to$ Mykonos. Day 5--6: Mykonos (2). Day 6 $\to$ Edinburgh. Day 6--7: Edinburgh (2 days, output truncated).
 
 \paragraph{Both paradigms solved.}
 \textbf{Question.} \seqsplit{Riga**Edinburgh**Seville**Paris**Naples||4**7**4**6**6}\\
-\textbf{LLaDA.} Day 1--4: Riga (4). Day 4 $\to$ Edinburgh. Day 4--9: Edinburgh (7). Day 9 $\to$ Seville. Day 9--12: Seville (4) \ldots\\
-\textbf{Qwen.} Trip plan for 5 European cities, 23 days. Day 1--4: arriving in Edinburgh and visit Edinburgh for 7 days. Day 4 $\to$ Riga \ldots (city order incorrect).
+\textbf{Dream.} Day 1--4: arriving in Riga and visit Riga for 4 days. Day 4: fly from Riga to Edinburgh. Day 4--10: visit Edinburgh for 7 days. Day 10: fly from Edinburgh to Seville \ldots (valid full parsed output; excerpt shown).\\
+\textbf{Qwen.} Trip plan for 5 European cities, 23 days. Day 1--4: arriving in Riga and visit Riga for 4 days. Day 4: fly from Riga to Edinburgh. Day 4--10: visit Edinburgh for 7 days. Day 10: fly from Edinburgh to Seville \ldots (valid full parsed output; excerpt shown).
 
 \paragraph{Neither paradigm solved.}
 \textbf{Question.} \seqsplit{Riga**Hamburg**Bucharest**Naples**Nice**Reykjavik**Prague**Florence**Madrid**Seville||2**4**2**4**4**3**2**4**5**4}\\
@@ -55,7 +56,7 @@ The following compact examples are extracted from the thesis generation JSON fil
 
 \textbf{Question.} \seqsplit{97,2,59,5,14}\\
 \textbf{Raw sample.} \seqsplit{97/2=48,59/5=34,48-34=14 Input: 97,}\\
-The chain reaches the target $14$ but reuses the input number $97$, so the multiset validity check rejects it.
+The parser first extracts the leading equation chain. Although the final expression ends at $14$, the chain is rejected because the intermediate equations are arithmetically invalid under exact evaluation: $97/2$ is not $48$ and $59/5$ is not $34$.
 
 \subsection{Trip Planning parser-failure example}
 
