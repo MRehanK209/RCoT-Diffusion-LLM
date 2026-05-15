@@ -23,6 +23,7 @@ set -uo pipefail
 
 source .venv/bin/activate
 
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export CUDA_LAUNCH_BLOCKING=0
 
@@ -31,7 +32,7 @@ export CUDA_LAUNCH_BLOCKING=0
 # =============================================================================
 EXPERIMENT=""
 DATASET="countdown_cd4"
-TARGET="all"           # all | llada | dream | qwen | llama
+TARGET="all"           # all | llada | dream | qwen | llama | comma-separated list
 VARIANT="all"          # all | base | instruct
 METHOD="fast"          # fast | slow | both
 N_SAMPLES=""           # empty = auto per experiment
@@ -42,9 +43,7 @@ NUM_EVALS=""           # empty = auto per dataset
 GEN_LENGTH=""          # empty = auto per dataset
 STEPS=""               # empty = auto per dataset
 BLOCK_LENGTH=""        # empty = auto per dataset
-PROMPT_MODE=""         # empty = auto | instruct_flat
-LOGITS_EOS_INF=""     # empty = auto (True for LLaDA-Instruct) | true | false
-CONFIDENCE_EOS_EOT_INF=""  # empty = auto (True for LLaDA-Instruct) | true | false
+PROMPT_MODE=""         # empty = auto | instruct_templated | instruct_flat | instruct_single_turn
 RESULTS_DIR="results"
 
 # =============================================================================
@@ -79,15 +78,20 @@ EXPERIMENT TYPES
              Only for diffusion models (LLaDA/Dream).
 
 MODEL SELECTION
-  -m, --model        llada | dream | qwen | llama | all  (default: all)
+  -m, --model        llada | dream | qwen | llama | all | comma-separated list
+                     Example: llada,dream,qwen
   -v, --variant      base | instruct | all | all3        (default: all)
                      all3 = base + instruct + instruct_flat (3-way comparison)
   --method           fast | slow | both                 (default: per-experiment)
 
 PROMPT MODE
-  --prompt_mode      auto | instruct_flat               (default: auto)
-                     auto          — base_native for base, instruct_templated for instruct
-                     instruct_flat — instruct model + flat completion prompt (ablation)
+  --prompt_mode      auto | instruct_templated | instruct_flat | instruct_single_turn   (default: auto)
+                     auto                 — base_native for base, instruct_templated for instruct
+                     instruct_templated   — explicit alias for the default instruct chat mode
+                     instruct_flat        — instruct model + flat completion prompt (ablation)
+                     instruct_single_turn — one user chat turn containing the full prompt (diagnostic)
+                     Repeat the flag or pass a comma-separated list to run multiple
+                     instruct prompt modes in one command.
                      Only meaningful for instruct models. Base models always use base_native.
 
 DATASET
@@ -104,12 +108,6 @@ GENERATION PARAMETERS (override per-dataset defaults)
   -g, --gen_length   Max generation tokens
   -s, --steps        Diffusion steps
   -b, --block_length Block length for diffusion
-
-EOS HANDLING (LLaDA-Instruct)
-  --logits_eos_inf         true | false     (default: auto — true for LLaDA-Instruct)
-                           Suppress EOS token in logits (prevents EOS from being sampled)
-  --confidence_eos_eot_inf true | false     (default: auto — true for LLaDA-Instruct)
-                           Suppress EOS in confidence scores (defers EOS unmasking)
 
 OUTPUT
   -o, --output_dir   Results directory                   (default: results)
@@ -132,10 +130,10 @@ LLADA-INSTRUCT OVERRIDES (auto-applied, override with -b)
   gen_length and steps stay the same; only block_length changes:
   Dataset            block (default)  block (LLaDA-Instruct)
   ─────────────────  ──────────────   ──────────────────────
-  countdown*/sudoku       32                   8
-  gsm8k                   32                   8
+  countdown*               32                  32
+  sudoku/gsm8k             32                   8
   trip_planning            32                  16
-  math/aime/math_beyond   32                  64
+  math/aime/math_beyond    32                  64
 
 EXAMPLES
   # Accuracy: all models on countdown_cd4, fast vs slow
@@ -166,6 +164,12 @@ EXAMPLES
 
   # Instruct-flat ablation only (instruct checkpoint with base prompt)
   ./run_evaluation.sh --experiment passk -d countdown_cd4 -v instruct --prompt_mode instruct_flat
+
+  # Single-turn chat prompt (closer to standard chat benchmark serialization)
+  ./run_evaluation.sh --experiment passk -d countdown_cd4 -v instruct --prompt_mode instruct_single_turn
+
+  # Run multiple instruct prompt modes together
+  ./run_evaluation.sh --experiment passk -d countdown_cd4 -v instruct --prompt_mode instruct_templated --prompt_mode instruct_flat
 HELP
 }
 
@@ -187,9 +191,14 @@ while [[ $# -gt 0 ]]; do
         -g|--gen_length)   GEN_LENGTH="$2";    shift 2 ;;
         -s|--steps)        STEPS="$2";         shift 2 ;;
         -b|--block_length) BLOCK_LENGTH="$2";  shift 2 ;;
-        --prompt_mode)     PROMPT_MODE="$2";   shift 2 ;;
-        --logits_eos_inf)  LOGITS_EOS_INF="$2";   shift 2 ;;
-        --confidence_eos_eot_inf) CONFIDENCE_EOS_EOT_INF="$2"; shift 2 ;;
+        --prompt_mode)
+            if [[ -n "$PROMPT_MODE" ]]; then
+                PROMPT_MODE="${PROMPT_MODE},$2"
+            else
+                PROMPT_MODE="$2"
+            fi
+            shift 2
+            ;;
         -o|--output_dir)   RESULTS_DIR="$2";   shift 2 ;;
         -h|--help)         show_help; exit 0 ;;
         *) echo "Unknown argument: $1"; echo "Run with --help for usage."; exit 1 ;;
@@ -247,6 +256,7 @@ esac
 mkdir -p "$RESULTS_DIR"
 
 LOG_FILE="${EXPERIMENT}_${DATASET}_$(date '+%Y%m%d_%H%M%S').log"
+TABLE_LOG_FILE="${LOG_FILE%.log}_table.log"
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -356,13 +366,13 @@ _get_block_length() {
     local model_name=${2:-""}
     if [[ -n "$BLOCK_LENGTH" ]]; then echo "$BLOCK_LENGTH"; return; fi
 
-    # LLaDA-Instruct: use semi-autoregressive (smaller block_length) following
-    # official LLaDA EVAL.md — dramatically improves instruct model performance.
-    # GSM8K: 68.8% → 78.9% with block_length=8
-    # MATH:  29.6% → 42.7% with block_length=64
+    # LLaDA-Instruct: use semi-autoregressive overrides only where they help.
+    # Local countdown_cd4 runs regressed sharply at block_length=8, so keep
+    # countdown on the default block size and only override the other tasks.
     if _is_llada_instruct "$model_name"; then
         case $dataset in
-            countdown*|sudoku|gsm8k|counting_letters) echo 8 ;;
+            countdown*)                                echo 32 ;;
+            sudoku|gsm8k|counting_letters)            echo 8 ;;
             trip_planning)                             echo 16 ;;
             math|aime|math_beyond)                     echo 64 ;;
             *)                                         echo 16 ;;
@@ -431,9 +441,30 @@ _data_tag() {
     if [[ "$dataset" == "gsm8k" ]]; then echo ""; else echo "_${dataset}"; fi
 }
 
+_resolve_prompt_mode_for_model() {
+    local model=$1 pm=$2
+    if [[ -z "$pm" || "$pm" == "auto" ]]; then
+        if echo "$model" | grep -qi "instruct"; then
+            echo "instruct_templated"
+        else
+            echo "base_native"
+        fi
+    else
+        echo "$pm"
+    fi
+}
+
 _pm_tag() {
-    local pm=$1
-    if [[ "$pm" == "instruct_flat" ]]; then echo "_flat"; else echo ""; fi
+    local model=$1 pm=$2
+    local resolved
+    resolved=$(_resolve_prompt_mode_for_model "$model" "$pm")
+    case "$resolved" in
+        base_native) echo "_base_native" ;;
+        instruct_templated) echo "_instruct_templated" ;;
+        instruct_flat) echo "_instruct_flat" ;;
+        instruct_single_turn) echo "_instruct_single_turn" ;;
+        *) echo "_${resolved}" ;;
+    esac
 }
 
 fast_dllm_fn() {
@@ -444,7 +475,7 @@ fast_dllm_fn() {
     local st=$(_get_steps "$dataset" "$model")
     local bl=$(_get_block_length "$dataset" "$model")
     local ne=$(_get_num_evals "$dataset")
-    local pt=$(_pm_tag "$pm")
+    local pt=$(_pm_tag "$model" "$pm")
     echo "${RESULTS_DIR}/${m}${dt}_${gl}_${st}_${bl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations${pt}_fast_dllm.json"
 }
 
@@ -456,7 +487,7 @@ dllm_fn() {
     local st=$(_get_steps "$dataset" "$model")
     local bl=$(_get_block_length "$dataset" "$model")
     local ne=$(_get_num_evals "$dataset")
-    local pt=$(_pm_tag "$pm")
+    local pt=$(_pm_tag "$model" "$pm")
     echo "${RESULTS_DIR}/${m}${dt}_${gl}_${st}_${bl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations${pt}_dllm.json"
 }
 
@@ -466,7 +497,7 @@ vllm_fn() {
     local dt=$(_data_tag "$dataset")
     local gl=$(_get_gen_length "$dataset" "$model")
     local ne=$(_get_num_evals "$dataset")
-    local pt=$(_pm_tag "$pm")
+    local pt=$(_pm_tag "$model" "$pm")
     echo "${RESULTS_DIR}/${m}${dt}_${gl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations${pt}_vllm.json"
 }
 
@@ -476,7 +507,7 @@ ar_fn() {
     local dt=$(_data_tag "$dataset")
     local gl=$(_get_gen_length "$dataset" "$model")
     local ne=$(_get_num_evals "$dataset")
-    local pt=$(_pm_tag "$pm")
+    local pt=$(_pm_tag "$model" "$pm")
     echo "${RESULTS_DIR}/${m}${dt}_${gl}_${bs}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations${pt}_ar.json"
 }
 
@@ -544,20 +575,6 @@ run_fast_dllm() {
     local dual_cache="False"
     local cache_refresh_steps=0
 
-    # Resolve EOS handling flags (auto-enable for LLaDA-Instruct)
-    local eos_logits="False"
-    local eos_confidence="False"
-    if [[ -n "$LOGITS_EOS_INF" ]]; then
-        [[ "$LOGITS_EOS_INF" == "true" ]] && eos_logits="True"
-    elif _is_llada_instruct "$model_name"; then
-        eos_logits="True"
-    fi
-    if [[ -n "$CONFIDENCE_EOS_EOT_INF" ]]; then
-        [[ "$CONFIDENCE_EOS_EOT_INF" == "true" ]] && eos_confidence="True"
-    elif _is_llada_instruct "$model_name"; then
-        eos_confidence="True"
-    fi
-
     if echo "$model_name" | grep -qi "dream"; then
         alg="confidence_threshold"
         dual_cache="True"
@@ -568,7 +585,7 @@ run_fast_dllm() {
         cache_refresh_steps=0
     fi
 
-    log "START [fast-dLLM] $model_name on $dataset (n=$N_SAMPLES, temp=$TEMPERATURE, bs=$bs, fs=$fs, gl=$gl, st=$st, bl=$bl, evals=$ne, pm=${pm:-auto}, eos_logits=$eos_logits, eos_conf=$eos_confidence)"
+    log "START [fast-dLLM] $model_name on $dataset (n=$N_SAMPLES, temp=$TEMPERATURE, bs=$bs, fs=$fs, gl=$gl, st=$st, bl=$bl, evals=$ne, pm=${pm:-auto})"
     gpu_cleanup
 
     python3 -u -c "
@@ -599,8 +616,6 @@ filename = evaluate_fast_dllm(
     n_samples=${N_SAMPLES},
     output_dir='${RESULTS_DIR}',
     prompt_mode=${pm_py},
-    logits_eos_inf=${eos_logits},
-    confidence_eos_eot_inf=${eos_confidence},
 )
 
 compute_metrics(results_file=filename, samples_per_problem=${N_SAMPLES}, k_values=$(_get_k_values "$N_SAMPLES"))
@@ -798,14 +813,32 @@ run_one() {
 # RESOLVE FAMILIES AND VARIANTS
 # =============================================================================
 FAMILIES=()
-case $TARGET in
-    all)   FAMILIES=(llada dream qwen llama) ;;
-    llada) FAMILIES=(llada) ;;
-    dream) FAMILIES=(dream) ;;
-    qwen)  FAMILIES=(qwen) ;;
-    llama) FAMILIES=(llama) ;;
-    *)     echo "ERROR: Unknown model '$TARGET' (use llada, dream, qwen, llama, or all)"; exit 1 ;;
-esac
+if [[ "$TARGET" == "all" ]]; then
+    FAMILIES=(llada dream qwen llama)
+else
+    IFS=',' read -ra _target_parts <<< "$TARGET"
+    declare -A _seen_families=()
+    for family in "${_target_parts[@]}"; do
+        family="${family//[[:space:]]/}"
+        [[ -z "$family" ]] && continue
+        case "$family" in
+            llada|dream|qwen|llama)
+                if [[ -z "${_seen_families[$family]:-}" ]]; then
+                    FAMILIES+=("$family")
+                    _seen_families["$family"]=1
+                fi
+                ;;
+            *)
+                echo "ERROR: Unknown model '$family' in '$TARGET' (use llada, dream, qwen, llama, or all)"
+                exit 1
+                ;;
+        esac
+    done
+    if [[ ${#FAMILIES[@]} -eq 0 ]]; then
+        echo "ERROR: No valid model families selected."
+        exit 1
+    fi
+fi
 
 get_models_for_variant() {
     local family=$1
@@ -816,24 +849,98 @@ get_models_for_variant() {
     esac
 }
 
+_normalized_prompt_modes() {
+    local raw=$1
+    local seen=" "
+    local part canon
+    local IFS=','
+    read -ra parts <<< "$raw"
+    for part in "${parts[@]}"; do
+        part="${part//[[:space:]]/}"
+        [[ -z "$part" ]] && continue
+        case "$part" in
+            auto|instruct_templated)
+                canon="auto"
+                ;;
+            instruct_flat)
+                canon="instruct_flat"
+                ;;
+            instruct_single_turn)
+                canon="instruct_single_turn"
+                ;;
+            *)
+                echo "ERROR: Invalid prompt mode '$part'. Valid values: auto, instruct_templated, instruct_flat, instruct_single_turn" >&2
+                return 1
+                ;;
+        esac
+        if [[ "$seen" != *" $canon "* ]]; then
+            printf '%s\n' "$canon"
+            seen+=" $canon"
+        fi
+    done
+}
+
+get_prompt_modes_for_model() {
+    local model_name=$1
+    if ! echo "$model_name" | grep -qi "instruct"; then
+        printf '%s\n' "auto"
+        return 0
+    fi
+
+    if [[ -n "$PROMPT_MODE" ]]; then
+        _normalized_prompt_modes "$PROMPT_MODE"
+        return $?
+    fi
+
+    if [[ "$VARIANT" == "all3" ]]; then
+        printf '%s\n' "auto" "instruct_flat"
+    else
+        printf '%s\n' "auto"
+    fi
+}
+
+_prompt_mode_label_suffix() {
+    local pm=$1
+    case "$pm" in
+        instruct_flat) echo " [flat]" ;;
+        instruct_single_turn) echo " [single-turn]" ;;
+        *) echo "" ;;
+    esac
+}
+
+_method_label_suffix() {
+    local family=$1 method_kind=$2
+    if is_diffusion_model "$family"; then
+        case "$method_kind" in
+            fast) echo " [fast-dllm]" ;;
+            slow) echo " [dllm]" ;;
+        esac
+    else
+        case "$method_kind" in
+            fast) echo " [vllm]" ;;
+            slow) echo " [ar]" ;;
+        esac
+    fi
+}
+
+if [[ -n "$PROMPT_MODE" ]]; then
+    _normalized_prompt_modes "$PROMPT_MODE" >/dev/null || exit 1
+fi
+
 # =============================================================================
 # EXPERIMENT: accuracy / passk / speed
 # =============================================================================
 run_standard_experiment() {
     for family in "${FAMILIES[@]}"; do
         for model_name in $(get_models_for_variant "$family"); do
-            run_one "$family" "$model_name" "$DATASET" "$BATCH_SIZE" "$PROMPT_MODE"
-            ((RUN++))
-            log "  Progress: $RUN runs completed"
+            local pm
+            while IFS= read -r pm; do
+                [[ -z "$pm" ]] && continue
+                run_one "$family" "$model_name" "$DATASET" "$BATCH_SIZE" "$pm"
+                ((RUN++))
+                log "  Progress: $RUN runs completed"
+            done < <(get_prompt_modes_for_model "$model_name")
         done
-        # all3: also run instruct models with instruct_flat prompt
-        if [[ "$VARIANT" == "all3" ]]; then
-            local inst_model="${INST_MODELS[$family]}"
-            log "--- instruct_flat ablation: $inst_model ---"
-            run_one "$family" "$inst_model" "$DATASET" "$BATCH_SIZE" "instruct_flat"
-            ((RUN++))
-            log "  Progress: $RUN runs completed"
-        fi
     done
 }
 
@@ -848,9 +955,13 @@ run_batch_experiment() {
         log "############################################################"
         for family in "${FAMILIES[@]}"; do
             for model_name in $(get_models_for_variant "$family"); do
-                run_one "$family" "$model_name" "$DATASET" "$bs"
-                ((RUN++))
-                log "  Progress: $RUN runs completed"
+                local pm
+                while IFS= read -r pm; do
+                    [[ -z "$pm" ]] && continue
+                    run_one "$family" "$model_name" "$DATASET" "$bs" "$pm"
+                    ((RUN++))
+                    log "  Progress: $RUN runs completed"
+                done < <(get_prompt_modes_for_model "$model_name")
             done
         done
     done
@@ -912,7 +1023,8 @@ run_sweep_experiment() {
             local m_clean=$(echo "$model_name" | tr '/' '_')
             local dt=$(_data_tag "$DATASET")
             local fs=$(_get_few_shot "$DATASET" "$model_name")
-            local output_file="${RESULTS_DIR}/${m_clean}${dt}_${gl}_${st}_${bl}_${BATCH_SIZE}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations_fast_dllm.json"
+            local pt=$(_pm_tag "$model_name" "auto")
+            local output_file="${RESULTS_DIR}/${m_clean}${dt}_${gl}_${st}_${bl}_${BATCH_SIZE}_${TEMPERATURE}_${fs}_${ne}_${N_SAMPLES}_generations${pt}_fast_dllm.json"
 
             if check_complete "$output_file" "$ne"; then
                 log "[$exp_num/$total_exps] SKIP: gl=$gl st=$st bl=$bl — complete"
@@ -1008,102 +1120,101 @@ generate_comparison_table() {
                 [[ "$EXPERIMENT" == "batch" ]] && bs_label=" (bs=${bs})"
                 local short_name
                 short_name=$(echo "$model_name" | sed 's|.*/||')
-                local label="${short_name}${bs_label}"
                 local fs=$(_get_few_shot "$DATASET" "$model_name")
-
-                local filepath=""
-                if is_diffusion_model "$family"; then
-                    if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
-                        filepath=$(fast_dllm_fn "$model_name" "$DATASET" "$fs" "$bs" "$PROMPT_MODE")
+                local pm
+                while IFS= read -r pm; do
+                    [[ -z "$pm" ]] && continue
+                    local label="${short_name}$(_prompt_mode_label_suffix "$pm")${bs_label}"
+                    if is_diffusion_model "$family"; then
+                        if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
+                            _add_entry "${label}$(_method_label_suffix "$family" fast)" \
+                                "$(fast_dllm_fn "$model_name" "$DATASET" "$fs" "$bs" "$pm")"
+                        fi
+                        if [[ "$METHOD" == "slow" || "$METHOD" == "both" ]]; then
+                            _add_entry "${label}$(_method_label_suffix "$family" slow)" \
+                                "$(dllm_fn "$model_name" "$DATASET" "$fs" "$bs" "$pm")"
+                        fi
+                    else
+                        if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
+                            _add_entry "${label}$(_method_label_suffix "$family" fast)" \
+                                "$(vllm_fn "$model_name" "$DATASET" "$fs" "$bs" "$pm")"
+                        fi
+                        if [[ "$METHOD" == "slow" || "$METHOD" == "both" ]]; then
+                            _add_entry "${label}$(_method_label_suffix "$family" slow)" \
+                                "$(ar_fn "$model_name" "$DATASET" "$fs" "$bs" "$pm")"
+                        fi
                     fi
-                else
-                    if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
-                        filepath=$(vllm_fn "$model_name" "$DATASET" "$fs" "$bs" "$PROMPT_MODE")
-                    fi
-                fi
-
-                _add_entry "$label" "$filepath"
+                done < <(get_prompt_modes_for_model "$model_name")
             done
         done
-
-        # all3: add instruct_flat entries
-        if [[ "$VARIANT" == "all3" ]]; then
-            local inst_model="${INST_MODELS[$family]}"
-            local short_name
-            short_name=$(echo "$inst_model" | sed 's|.*/||')
-            local label="${short_name} [flat]"
-            local fs=$(_get_few_shot "$DATASET" "$inst_model")
-            local filepath=""
-
-            if is_diffusion_model "$family"; then
-                if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
-                    filepath=$(fast_dllm_fn "$inst_model" "$DATASET" "$fs" "$BATCH_SIZE" "instruct_flat")
-                fi
-            else
-                if [[ "$METHOD" == "fast" || "$METHOD" == "both" ]]; then
-                    filepath=$(vllm_fn "$inst_model" "$DATASET" "$fs" "$BATCH_SIZE" "instruct_flat")
-                fi
-            fi
-
-            _add_entry "$label" "$filepath"
-        fi
     done
     file_list_json+="}"
 
-    python3 -u -c "
-import sys, json, os
+    FILE_LIST_JSON="$file_list_json" \
+    RESULTS_DIR_ENV="$RESULTS_DIR" \
+    EXPERIMENT_ENV="$EXPERIMENT" \
+    DATASET_ENV="$DATASET" \
+    N_SAMPLES_ENV="$N_SAMPLES" \
+    TEMPERATURE_ENV="$TEMPERATURE" \
+    python3 -u - <<'PY' 2>&1 | tee -a "$LOG_FILE" "$TABLE_LOG_FILE"
+import json
+import os
+import sys
+
 sys.path.insert(0, '.')
-from metrics.pass_k import pass_at_k, compute_pass_at_k
-from evaluate_pass_k import prepare_pass_k_data, load_generation_results
 
-n_samples = ${N_SAMPLES}
+from evaluate_pass_k import load_generation_results, prepare_pass_k_data
+from metrics.pass_k import compute_pass_at_k
+
+n_samples = int(os.environ["N_SAMPLES_ENV"])
 k_values = [k for k in [1, 2, 4, 8, 16, 32, 64, 128] if k <= n_samples]
-dataset = '${DATASET}'
-experiment = '${EXPERIMENT}'
-
-models = json.loads('${file_list_json}')
+dataset = os.environ["DATASET_ENV"]
+experiment = os.environ["EXPERIMENT_ENV"]
+temperature = float(os.environ["TEMPERATURE_ENV"])
+results_dir = os.environ["RESULTS_DIR_ENV"]
+models = json.loads(os.environ["FILE_LIST_JSON"])
 
 print()
-header = f\"{'Model':<35}\" + ''.join(f'pass@{k:>3}  ' for k in k_values)
+header = f"{'Model':<35}" + ''.join(f'pass@{k:>3}  ' for k in k_values)
 print(header)
 print('=' * len(header))
 
 all_results = {}
 for label, filepath in models.items():
     if not os.path.exists(filepath):
-        print(f'{label:<35} (file not found: {os.path.basename(filepath)})')
+        print(f"{label:<35} (file not found: {os.path.basename(filepath)})")
         continue
     try:
         gens = load_generation_results(filepath)
         pass_k_data = prepare_pass_k_data(gens)
         scores = compute_pass_at_k(pass_k_data, k_values)
-        row = f'{label:<35}'
+        row = f"{label:<35}"
         model_scores = {}
         for k in k_values:
             if k in scores:
-                row += f'{scores[k]*100:>6.2f}%  '
+                row += f"{scores[k] * 100:>6.2f}%  "
                 model_scores[k] = round(scores[k], 6)
             else:
-                row += f'{\"N/A\":>7}  '
+                row += f"{'N/A':>7}  "
         print(row)
         all_results[label] = model_scores
-    except Exception as e:
-        print(f'{label:<35} ERROR: {e}')
+    except Exception as exc:
+        print(f"{label:<35} ERROR: {exc}")
 print()
 
 output = {
-    'experiment': experiment,
-    'dataset': dataset,
-    'n_samples': n_samples,
-    'temperature': ${TEMPERATURE},
-    'k_values': k_values,
-    'results': all_results,
+    "experiment": experiment,
+    "dataset": dataset,
+    "n_samples": n_samples,
+    "temperature": temperature,
+    "k_values": k_values,
+    "results": all_results,
 }
-outfile = f'${RESULTS_DIR}/{experiment}_{dataset}_comparison.json'
-with open(outfile, 'w') as f:
+outfile = os.path.join(results_dir, f"{experiment}_{dataset}_comparison.json")
+with open(outfile, "w") as f:
     json.dump(output, f, indent=2)
-print(f'Saved to: {outfile}')
-" 2>&1 | tee -a "$LOG_FILE"
+print(f"Saved to: {outfile}")
+PY
 }
 
 # =============================================================================
@@ -1124,13 +1235,16 @@ log "  Batch Size:   $BATCH_SIZE"
 log "  Temperature:  $TEMPERATURE"
 log "  Few-shot:     ${FEW_SHOT:-auto}"
 log "  Prompt mode:  ${PROMPT_MODE:-auto}"
-log "  Gen params (base defaults, LLaDA-Instruct may auto-override):"
+log "  Gen params (dataset defaults; model-specific overrides are shown in START lines):"
 log "    gen_length:   $(_get_gen_length "$DATASET")"
 log "    steps:        $(_get_steps "$DATASET")"
 log "    block_length: $(_get_block_length "$DATASET")"
 log "    num_evals:    $(_get_num_evals "$DATASET")"
-log "  EOS handling:  logits_eos_inf=${LOGITS_EOS_INF:-auto}, confidence_eos_eot_inf=${CONFIDENCE_EOS_EOT_INF:-auto}"
+if [[ -z "$BLOCK_LENGTH" && "$DATASET" == "trip_planning" && ( "$TARGET" == "all" || "$TARGET" == *llada* ) && "$VARIANT" != "base" ]]; then
+    log "  Note: LLaDA-Instruct auto-overrides trip_planning block_length to 16 unless you pass -b explicitly."
+fi
 log "  Log file:     $LOG_FILE"
+log "  Table log:    $TABLE_LOG_FILE"
 log "================================================================"
 
 case $EXPERIMENT in
