@@ -17,7 +17,7 @@ These tables collect the main stochastic results referenced in Chapter~\ref{sec:
 
 \begin{table}[H]
 \centering
-\caption[GSM8K base 4-shot pass@k]{GSM8K base 4-shot pass@k under the primary strict boxed-answer scorer, $n=128$, temperature $=0.7$. Llama-Base has low measured estimated stochastic pass@1 in this base-native run; pass@128 reaches $1.000$, and Llama-Instruct templated reaches estimated stochastic pass@1$=0.782$ on the same benchmark.}
+\caption{GSM8K base pass@k, $n=128$.}
 \label{tab:gsm8k-base-zero}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -35,7 +35,7 @@ Llama-Base & 0.134 & 0.244 & 0.411 & 0.616 & 0.804 & 0.925 & 0.980 & 1.000 \\
 
 \begin{table}[H]
 \centering
-\caption{GSM8K base 4-shot pass@k under the primary strict boxed-answer scorer, $n=16$, temperature $=0.7$.}
+\caption{GSM8K base 4-shot pass@k, $n=16$.}
 \label{tab:gsm8k-base-four}
 \scriptsize
 \begin{tabular}{lccccc}
@@ -52,7 +52,7 @@ Llama-Base & 0.136 & 0.244 & 0.405 & 0.603 & 0.789 \\
 
 \begin{table}[H]
 \centering
-\caption{GSM8K instruct pass@k at 0-shot and 4-shot under the primary strict boxed-answer scorer, $n=16$, temperature $=0.7$. The evaluated diffusion instruct configurations lead at 0-shot; the evaluated Qwen/Llama instruct configurations close the gap with 4-shot examples.}
+\caption{GSM8K instruct pass@k at 0-shot and 4-shot.}
 \label{tab:gsm8k-instruct-zero-four}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -80,7 +80,7 @@ Llama-Base & 0.136 & 0.244 & 0.405 & 0.603 & 0.789 \\
 
 \begin{table}[H]
 \centering
-\caption{Countdown prompt-mode diagnostic from the earlier smaller run. Absolute numbers are not directly comparable to the main Countdown run in the main text because of differing generation length and evaluation set; only within-model templated/flat comparisons are meaningful.}
+\caption{Countdown prompt-mode diagnostic.}
 \label{tab:countdown-prompt-diagnostic}
 \scriptsize
 \begin{tabularx}{\textwidth}{Ycc}
@@ -109,7 +109,7 @@ Llama-Instruct flat & 0.050 & 0.484 \\
 
 \begin{table}[H]
 \centering
-\caption{Trip Planning deterministic comparison (greedy, $n=1$): selected leading configurations and AR reference rows across model family, backend, and block size.}
+\caption{Trip Planning deterministic configuration ranking.}
 \label{tab:trip-deterministic-full}
 \scriptsize
 \begin{tabularx}{\textwidth}{Yc}

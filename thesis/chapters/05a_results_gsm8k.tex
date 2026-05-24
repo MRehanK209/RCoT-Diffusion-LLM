@@ -1,14 +1,14 @@
 \subsection{GSM8K as a saturated diagnostic benchmark}
 \label{sec:results-gsm8k}
 
-GSM8K behaves more like a diagnostic benchmark than a clean paradigm-ranking task in these runs. All four model families reach pass@128 above $0.97$ in the main GSM8K runs, and two of four reach $1.000$. Because all four families approach saturation at high $k$, GSM8K is not the strongest evidence for paradigm differences in this thesis. In this setting, it is most useful for checking prompt format, few-shot setup, and answer extraction. The evaluated diffusion instruct configurations lead in zero-shot mode (LLaDA-Instruct estimated stochastic pass@1$=0.749$, Dream-Instruct $0.734$ versus Qwen-Instruct $0.534$ and Llama-Instruct $0.488$); $4$-shot prompting essentially closes that gap, raising Qwen-Instruct to $0.789$ and Llama-Instruct to $0.782$. The full $0$-shot, $4$-shot, base, and instruct breakdowns are reproduced in Appendix~\ref{sec:appendix-gsm8k}.
+GSM8K behaves more like a diagnostic benchmark than a clean paradigm-ranking task in these runs. All four model families reach pass@128 above $0.97$ in the main GSM8K runs, and two of four reach $1.000$. Because all four families approach saturation at high $k$, GSM8K is not the strongest evidence for paradigm differences in this thesis. In this setting, it is most useful for checking prompt format, few-shot setup, and answer extraction. LLaDA-Instruct and Dream-Instruct lead in zero-shot mode (estimated stochastic pass@1$=0.749$ and $0.734$, versus Qwen-Instruct $0.534$ and Llama-Instruct $0.488$); $4$-shot prompting essentially closes that gap, raising Qwen-Instruct to $0.789$ and Llama-Instruct to $0.782$. The full $0$-shot, $4$-shot, base, and instruct breakdowns are reproduced in Appendix~\ref{sec:appendix-gsm8k}.
 
 The largest single prompt-format effect appears here. Removing the chat template from Llama-Instruct on GSM8K drops estimated stochastic pass@1 from $0.782$ to $0.198$, a $58$-point swing on a benchmark on which both prompt modes converge to pass@128$=1.000$. Figure~\ref{fig:gsm8k-prompt} reports the pass@1 difference between templated and flat instruct prompting. Table~\ref{tab:gsm8k-strict-vs-permissive} puts the primary strict boxed-answer scores beside the permissive final-number scorer used only for parser-sensitivity analysis.
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.78\textwidth]{images/gsm8k_prompt_sensitivity.pdf}
-\caption{GSM8K instruct prompt-format sensitivity at estimated stochastic pass@1, $n=128$. Llama-Instruct is especially sensitive to flattening, while LLaDA-Instruct slightly improves under the flat format in this run.}
+\caption{GSM8K instruct prompt-format sensitivity at pass@1.}
 \label{fig:gsm8k-prompt}
 \end{figure}
 

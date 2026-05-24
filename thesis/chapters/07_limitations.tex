@@ -1,10 +1,42 @@
 \section{Limitations}
 \label{sec:limitations}
 
-The comparison is limited to four open model families at roughly $7$B--$8$B scale and to three benchmarks: GSM8K, Countdown-cd4, and Trip Planning. The results should not be extended to larger proprietary systems, multimodal models, or tasks that were not evaluated here. GSM8K is also close to saturated at high $k$, so it is mainly informative about prompt format and answer extraction rather than high-budget paradigm separation. The clearest ranking reversal appears on Countdown-cd4; Trip Planning shows a related pattern, but it is more affected by parser compatibility and prompt format.
+The scope is intentionally narrow. The comparison covers four open model
+families at roughly $7$B--$8$B scale and three benchmarks: GSM8K,
+Countdown-cd4, and Trip Planning. It should therefore not be generalized to
+larger proprietary systems, multimodal models, or tasks outside this set. It
+also does not cover newer larger diffusion LLMs such as LLaDA2.0, which reports
+16B and 100B diffusion variants \cite{bie2025llada20}. GSM8K is close to
+saturated at high $k$, so it mainly informs prompt format and answer extraction
+rather than high-budget paradigm separation. The clearest reversal appears on
+Countdown-cd4. Trip Planning shows a related pattern, but parser compatibility
+and prompt format matter more there.
 
-The reported scores depend on task-specific parsers. GSM8K is evaluated with a strict boxed-answer extractor in the primary scoring setup, Countdown requires valid chained equations, and Trip Planning requires a parseable itinerary with the correct order and durations. These requirements are appropriate for structured evaluation, but they mean that absolute scores measure formatting compliance as well as reasoning quality. The effect is strongest for Trip Planning, where malformed outputs account for many failures.
+The scores also depend on task-specific parsers. GSM8K uses a strict
+boxed-answer extractor in the primary scoring setup, Countdown requires valid
+chained equations, and Trip Planning requires a parseable itinerary with the
+correct order and durations. These requirements are appropriate for structured
+evaluation, but the measured scores include formatting compliance as well as
+reasoning quality. The issue is most visible in Trip Planning, where malformed
+outputs account for many failures.
 
-The pass@k results are finite-sample estimates. GSM8K and Countdown use up to $128$ samples per question, while Trip Planning uses up to $64$. Tables~\ref{tab:main-results-gsm8k}--\ref{tab:main-results-trip} and Appendix~\ref{sec:appendix-bootstrap-ci} report bootstrap confidence intervals over questions, and Table~\ref{tab:paired-bootstrap-tests} adds paired bootstrap comparisons for the main Countdown and Trip Planning claims. These intervals and tests do not capture variability across repeated sampling seeds. Where curves are close, especially in Trip Planning, the absence of repeated sampling seeds still limits the strength of ranking claims.
+The pass@k values are finite-sample estimates. GSM8K and Countdown use up to
+$128$ samples per question, while Trip Planning uses up to $64$.
+Tables~\ref{tab:main-results-gsm8k}--\ref{tab:main-results-trip} report
+bootstrap confidence intervals over questions, and
+Table~\ref{tab:paired-bootstrap-tests} gives paired bootstrap comparisons for
+the main Countdown and Trip Planning claims. These intervals do not capture
+variation across repeated sampling seeds. When curves are close, especially in
+Trip Planning, that missing source of variation limits how strongly a ranking
+claim should be read.
 
-The inference systems are also different. Diffusion runs use fast-dLLM, while autoregressive runs use vLLM. These backends differ in batching, caching, denoising schedules, and serving overhead, so the study should not be read as a controlled latency comparison. Therefore, wall-time observations should be treated as backend-specific measurements rather than direct architectural efficiency comparisons. The comparison also cannot fully separate architecture, pretraining data, post-training, tokenizer behavior, prompt interface, and inference backend. The selector caveat from Section~\ref{sec:results-correlation} also applies to the oracle-union analysis: it does not show that a practical routing or selection system can recover the same gains.
+The inference systems differ as well. Diffusion runs use fast-dLLM, while AR
+runs use vLLM. The two backends differ in batching, caching, denoising
+schedules, and serving overhead, so the study is not a controlled latency
+comparison. Wall-time observations should therefore be read as backend-specific
+measurements, not direct architectural efficiency comparisons. More broadly,
+the experiments cannot fully separate architecture, pretraining data,
+post-training, tokenizer behavior, prompt interface, and inference backend. The
+same caution applies to the oracle-union analysis in
+Section~\ref{sec:results-correlation}: it does not show that a practical router
+or selector would recover the oracle gains.

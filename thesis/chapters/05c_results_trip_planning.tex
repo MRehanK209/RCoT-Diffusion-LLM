@@ -1,14 +1,14 @@
 \subsection{Trip Planning: a natural-language planning extension}
 \label{sec:results-trip}
 
-Trip Planning extends the comparison from symbolic arithmetic planning to structured natural-language planning. These results are less clean than Countdown because many outputs are rejected by the strict parser before semantic scoring. The benchmark therefore measures both planning quality and the ability to produce the expected itinerary structure. Table~\ref{tab:trip-parseability-semantic} separates parseability from semantic correctness. Within that caveat, the evaluated Dream configurations remain strongest among the standard evaluated diffusion runs at low $k$, while Llama benefits more from search and the flat-prompt Llama run becomes the strongest observed high-$k$ curve in the merged comparison. Deterministically, the evaluated Dream configurations occupy the top of the configuration ranking at $0.135$--$0.150$, with the next non-Dream model being LLaDA-Base at $0.115$ and the strongest AR configuration being Llama-Instruct flat at $0.095$; selected deterministic configurations across backends and block sizes are reproduced in Appendix~\ref{sec:appendix-trip-deterministic}.
+Trip Planning extends the comparison from symbolic arithmetic planning to structured natural-language planning. These results are less clean than Countdown because many outputs are rejected by the strict parser before semantic scoring. The benchmark therefore measures both planning quality and the ability to produce the expected itinerary structure. Table~\ref{tab:trip-parseability-semantic} separates parseability from semantic correctness. Within that caveat, Dream remains strongest among the standard diffusion runs at low $k$, while Llama benefits more from search and the flat-prompt Llama run becomes the strongest observed high-$k$ curve in the merged comparison. Deterministically, Dream occupies the top of the configuration ranking at $0.135$--$0.150$, with the next non-Dream model being LLaDA-Base at $0.115$ and the strongest AR configuration being Llama-Instruct flat at $0.095$; selected deterministic configurations across backends and block sizes are reproduced in Appendix~\ref{sec:appendix-trip-deterministic}.
 
 \input{tables/trip_parseability_semantic}
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.94\textwidth]{images/trip_planning_passk.pdf}
-\caption{Trip Planning pass@k for the available stochastic runs. The left panel shows base curves; the right panel shows instruct curves, with dashed lines marking flat-prompt instruct runs and solid lines marking base or templated runs. The benchmark is parser-sensitive, so these curves reflect both itinerary planning and compatibility with the strict output structure. Paired bootstrap tests find Dream-Base $>$ Llama-Base at $k=1$, but the Llama-Base minus Dream-Base interval at $k=64$ includes zero; Llama-Instruct flat exceeds LLaDA-Instruct flat at $k=64$ (Table~\ref{tab:paired-bootstrap-tests}).}
+\caption{Trip Planning pass@k for the available stochastic runs.}
 \label{fig:trip-passk}
 \end{figure}
 

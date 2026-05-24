@@ -1,10 +1,25 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-This thesis compared evaluated diffusion configurations and Qwen/Llama configurations on reasoning and planning tasks under shared downstream scoring conditions. The results do not support a universal ranking between the two model families. Instead, they show that the answer depends on the sampling budget and on the benchmark interface.
+Across the three benchmarks, the comparison between diffusion and
+autoregressive runs does not support a universal ranking between the two model
+families. The preferred model depends on the sampling budget and on the
+benchmark interface.
 
-Countdown-cd4 gives the clearest example. The evaluated diffusion base configurations are strongest at estimated stochastic pass@1, but Qwen-Base and Llama-Base overtake them at high pass@k. Trip Planning shows a related but less clean pattern because parser compatibility and prompt format have a stronger effect. GSM8K is close to saturated at high $k$, so it is most useful here as a diagnostic for prompt format and answer extraction.
+Countdown-cd4 gives the clearest example. LLaDA-Base and Dream-Base are
+strongest at estimated stochastic pass@1, but Qwen-Base and Llama-Base overtake
+them at high pass@k. Trip Planning shows a related but less clean pattern
+because parser compatibility and prompt format have a stronger effect. GSM8K is
+close to saturated at high $k$, making it more useful here as a diagnostic for
+prompt format and answer extraction than as a paradigm-ranking benchmark.
 
-The evaluated diffusion configurations do not show the large-$k$ coverage advantage that motivated the study. Their strength appears mainly in deterministic or low-budget planning settings. The evaluated Qwen/Llama configurations, by contrast, often gain more from repeated stochastic sampling when many candidates are available. Per-question analyses show that the models solve overlapping but non-identical subsets of problems, which makes hybrid evaluation and selection methods a natural next step.
+The diffusion runs do not show the large-$k$ coverage advantage that motivated
+the study. Their strength appears mainly in deterministic or low-budget planning
+settings. Qwen and Llama, by contrast, often gain more from repeated stochastic
+sampling when many candidates are available. The per-question analyses show
+overlap, but not identity, in the problems solved by each model family. That
+makes hybrid evaluation and selection methods a natural next step.
 
-Future work should therefore focus less on declaring one generation interface superior and more on building practical systems that combine candidate generation with verification, routing, selection, or parser-aware repair.
+Future work should therefore move away from declaring one generation interface
+superior in general. A more useful direction is to combine candidate generation
+with verification, routing, selection, or parser-aware repair.

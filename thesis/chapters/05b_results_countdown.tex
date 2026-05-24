@@ -1,12 +1,12 @@
 \subsection{Countdown-cd4: budget-dependent ranking reversal}
 \label{sec:results-countdown}
 
-Countdown-cd4 gives the clearest ranking change across $k$. Under low-budget evaluation, the evaluated diffusion configurations are competitive or leading. As $k$ increases, some evaluated Qwen/Llama configurations gain more from repeated sampling and overtake at high pass@k. Figure~\ref{fig:countdown-base} reports the base pass@k curves.
+Countdown-cd4 gives the clearest ranking change across $k$. Under low-budget evaluation, the LLaDA and Dream runs are competitive or leading. As $k$ increases, some Qwen and Llama runs gain more from repeated sampling and overtake at high pass@k. Figure~\ref{fig:countdown-base} reports the base pass@k curves.
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.92\textwidth]{images/countdown_base_crossover.pdf}
-\caption{Countdown-cd4 base pass@k crossover. The evaluated diffusion base configurations lead at estimated stochastic pass@1; Qwen-Base and Llama-Base overtake by large $k$. Paired bootstrap tests over questions find LLaDA-Base $>$ Qwen-Base at $k=1$ and Qwen-Base $>$ LLaDA-Base at $k=128$ (Table~\ref{tab:paired-bootstrap-tests}).}
+\caption{Countdown-cd4 base pass@k crossover.}
 \label{fig:countdown-base}
 \end{figure}
 
@@ -17,7 +17,7 @@ The instruct-templated condition is more model-dependent than the base condition
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.92\textwidth]{images/countdown_instruct_passk.pdf}
-\caption{Countdown-cd4 instruct-templated pass@k. Dream-Instruct remains the strongest evaluated diffusion run, while Llama-Instruct becomes the strongest high-$k$ model. Paired bootstrap tests find Dream-Instruct $>$ Llama-Instruct at $k=1$ and Llama-Instruct $>$ Dream-Instruct at $k=128$ (Table~\ref{tab:paired-bootstrap-tests}).}
+\caption{Countdown-cd4 instruct-templated pass@k.}
 \label{fig:countdown-instruct}
 \end{figure}
 

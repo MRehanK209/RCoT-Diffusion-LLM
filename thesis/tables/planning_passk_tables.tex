@@ -6,7 +6,7 @@ The tables below are generated from the stored generation JSON artifacts. Values
 
 \begin{table}[H]
 \centering
-\caption{Countdown-cd4 base main run pass@k, $n=128$, temperature $=0.7$.}
+\caption{Countdown-cd4 base pass@k.}
 \label{tab:countdown-base-main-passk}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -24,7 +24,7 @@ Llama-Base & 0.027 & 0.051 & 0.094 & 0.160 & 0.248 & 0.343 & 0.429 & 0.495 \\
 
 \begin{table}[H]
 \centering
-\caption{Countdown-cd4 instruct-templated main run pass@k, $n=128$, temperature $=0.7$.}
+\caption{Countdown-cd4 instruct pass@k.}
 \label{tab:countdown-instruct-main-passk}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -42,7 +42,7 @@ Llama-Instruct & 0.058 & 0.103 & 0.167 & 0.244 & 0.316 & 0.376 & 0.424 & 0.462 \
 
 \begin{table}[H]
 \centering
-\caption{Trip Planning base stochastic run pass@k, $n=64$, temperature $=0.7$.}
+\caption{Trip Planning base pass@k.}
 \label{tab:trip-base-main-passk}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -60,7 +60,7 @@ Llama-Base & 0.025 & 0.045 & 0.076 & 0.117 & 0.161 & 0.205 & 0.255 \\
 
 \begin{table}[H]
 \centering
-\caption{Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.}
+\caption{Trip Planning instruct pass@k.}
 \label{tab:trip-instruct-main-passk}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -77,83 +77,3 @@ Llama-Instruct flat & 0.060 & 0.093 & 0.135 & 0.180 & 0.225 & 0.266 & 0.295 \\
 \bottomrule
 \end{tabular}}
 \end{table}
-
-\FloatBarrier
-\subsection{Bootstrap confidence intervals for planning pass@k}
-\label{sec:appendix-bootstrap-ci}
-Intervals use 1000 bootstrap resamples over questions with fixed seed 20260523. They quantify uncertainty from the finite question set, not variability across repeated sampling seeds.
-
-\begin{table}[H]
-\centering
-\caption{Countdown-cd4 base main run pass@k, $n=128$, temperature $=0.7$. Cells report point estimate [95\% bootstrap CI over questions].}
-\label{tab:countdown-base-main-passk-ci}
-\tiny
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccccc}
-\toprule
-\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} & \textbf{128} \\
-\midrule
-LLaDA-Base & 0.143 [0.123, 0.162] & 0.163 [0.142, 0.183] & 0.181 [0.159, 0.202] & 0.200 [0.177, 0.224] & 0.219 [0.196, 0.243] & 0.238 [0.213, 0.263] & 0.256 [0.229, 0.282] & 0.272 [0.244, 0.300] \\
-Dream-Base & 0.113 [0.098, 0.128] & 0.157 [0.137, 0.176] & 0.201 [0.180, 0.221] & 0.244 [0.221, 0.267] & 0.286 [0.262, 0.312] & 0.322 [0.295, 0.350] & 0.352 [0.323, 0.381] & 0.376 [0.346, 0.406] \\
-Qwen-Base & 0.040 [0.036, 0.045] & 0.075 [0.069, 0.083] & 0.131 [0.119, 0.143] & 0.210 [0.194, 0.229] & 0.301 [0.279, 0.323] & 0.387 [0.364, 0.415] & 0.457 [0.429, 0.484] & 0.513 [0.481, 0.543] \\
-Llama-Base & 0.027 [0.024, 0.030] & 0.051 [0.046, 0.057] & 0.094 [0.085, 0.103] & 0.160 [0.146, 0.173] & 0.248 [0.229, 0.266] & 0.343 [0.320, 0.369] & 0.429 [0.401, 0.457] & 0.495 [0.464, 0.524] \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{Countdown-cd4 instruct-templated main run pass@k, $n=128$, temperature $=0.7$. Cells report point estimate [95\% bootstrap CI over questions].}
-\label{tab:countdown-instruct-main-passk-ci}
-\tiny
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccccc}
-\toprule
-\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} & \textbf{128} \\
-\midrule
-LLaDA-Instruct & 0.024 [0.016, 0.033] & 0.028 [0.019, 0.037] & 0.032 [0.022, 0.042] & 0.036 [0.026, 0.048] & 0.041 [0.030, 0.054] & 0.047 [0.035, 0.060] & 0.052 [0.038, 0.065] & 0.055 [0.040, 0.071] \\
-Dream-Instruct & 0.091 [0.078, 0.106] & 0.125 [0.108, 0.144] & 0.160 [0.140, 0.180] & 0.196 [0.174, 0.218] & 0.232 [0.208, 0.256] & 0.264 [0.239, 0.290] & 0.293 [0.265, 0.320] & 0.323 [0.293, 0.352] \\
-Qwen-Instruct & 0.078 [0.066, 0.091] & 0.107 [0.091, 0.124] & 0.134 [0.115, 0.154] & 0.159 [0.139, 0.181] & 0.181 [0.159, 0.204] & 0.199 [0.177, 0.226] & 0.213 [0.190, 0.237] & 0.221 [0.195, 0.245] \\
-Llama-Instruct & 0.058 [0.052, 0.064] & 0.103 [0.093, 0.113] & 0.167 [0.152, 0.184] & 0.244 [0.223, 0.265] & 0.316 [0.293, 0.341] & 0.376 [0.348, 0.403] & 0.424 [0.397, 0.454] & 0.462 [0.431, 0.491] \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{Trip Planning base stochastic run pass@k, $n=64$, temperature $=0.7$. Cells report point estimate [95\% bootstrap CI over questions].}
-\label{tab:trip-base-main-passk-ci}
-\tiny
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccccc}
-\toprule
-\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} \\
-\midrule
-LLaDA-Base & 0.036 [0.019, 0.055] & 0.054 [0.030, 0.078] & 0.076 [0.047, 0.107] & 0.100 [0.067, 0.137] & 0.123 [0.083, 0.169] & 0.144 [0.099, 0.194] & 0.165 [0.115, 0.220] \\
-Dream-Base & 0.054 [0.034, 0.076] & 0.081 [0.051, 0.113] & 0.108 [0.073, 0.145] & 0.134 [0.093, 0.176] & 0.159 [0.114, 0.205] & 0.188 [0.142, 0.239] & 0.225 [0.165, 0.280] \\
-Qwen-Base & 0.015 [0.008, 0.022] & 0.027 [0.015, 0.041] & 0.045 [0.026, 0.067] & 0.070 [0.043, 0.098] & 0.098 [0.065, 0.136] & 0.129 [0.089, 0.173] & 0.155 [0.105, 0.205] \\
-Llama-Base & 0.025 [0.017, 0.034] & 0.045 [0.029, 0.061] & 0.076 [0.052, 0.102] & 0.117 [0.082, 0.154] & 0.161 [0.116, 0.208] & 0.205 [0.155, 0.256] & 0.255 [0.195, 0.315] \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates. Cells report point estimate [95\% bootstrap CI over questions].}
-\label{tab:trip-instruct-main-passk-ci}
-\tiny
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccccc}
-\toprule
-\textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} \\
-\midrule
-LLaDA-Instruct & 0.010 [0.005, 0.017] & 0.018 [0.008, 0.029] & 0.030 [0.015, 0.047] & 0.047 [0.026, 0.071] & 0.068 [0.039, 0.098] & 0.091 [0.059, 0.129] & 0.105 [0.065, 0.150] \\
-LLaDA-Instruct flat & 0.012 [0.006, 0.019] & 0.022 [0.011, 0.034] & 0.037 [0.022, 0.056] & 0.059 [0.035, 0.082] & 0.084 [0.051, 0.119] & 0.112 [0.072, 0.151] & 0.140 [0.095, 0.190] \\
-Dream-Instruct & 0.057 [0.032, 0.084] & 0.075 [0.046, 0.107] & 0.090 [0.057, 0.128] & 0.105 [0.069, 0.147] & 0.122 [0.082, 0.162] & 0.139 [0.091, 0.190] & 0.150 [0.100, 0.200] \\
-Qwen-Instruct & 0.016 [0.006, 0.029] & 0.026 [0.011, 0.044] & 0.037 [0.016, 0.060] & 0.049 [0.024, 0.077] & 0.062 [0.035, 0.095] & 0.075 [0.042, 0.108] & 0.085 [0.050, 0.130] \\
-Llama-Instruct & 0.017 [0.010, 0.025] & 0.031 [0.019, 0.045] & 0.054 [0.034, 0.077] & 0.084 [0.058, 0.117] & 0.120 [0.084, 0.160] & 0.161 [0.117, 0.209] & 0.210 [0.155, 0.265] \\
-Llama-Instruct flat & 0.060 [0.040, 0.083] & 0.093 [0.065, 0.125] & 0.135 [0.097, 0.174] & 0.180 [0.136, 0.224] & 0.225 [0.168, 0.279] & 0.266 [0.212, 0.327] & 0.295 [0.230, 0.360] \\
-\bottomrule
-\end{tabular}}
-\end{table}
-

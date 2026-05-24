@@ -27,7 +27,7 @@
 \section*{Declaration of Independent Work}
 \markboth{Declaration of Independent Work}{Declaration of Independent Work}
 \addcontentsline{toc}{section}{Declaration of Independent Work}
-I hereby declare that I have written this thesis independently and that all sources, tools, and aids used are stated. I have cited the scientific sources used according to established academic citation rules. The empirical analysis is based on the evaluation runs and result artifacts produced for this thesis.
+I confirm that this thesis is my own independent work. All sources, tools, and other aids used in preparing it are listed, and the scientific literature has been cited according to the usual academic standards. The empirical analysis is based on the evaluation runs and result artifacts produced for this project.
 
 \vspace{3.2cm}
 \noindent
@@ -41,11 +41,11 @@ Place, Date & Signature
 \section*{Abstract}
 \markboth{Abstract}{Abstract}
 \addcontentsline{toc}{section}{Abstract}
-Language models are often compared using a single generated answer, but repeated sampling can change model rankings. This thesis evaluates whether masked diffusion language models and autoregressive language models differ in how their performance changes from deterministic or first-sample evaluation to many-sample pass@k evaluation. The comparison is motivated by recent large-$k$ reasoning work showing that top-1 scores and pass@k can measure different properties of a model's sampled candidate set.
+Reasoning benchmarks often reduce a model to one generated answer, even though many applications can sample more than once. This thesis is motivated by recent large-$k$ reasoning work showing that top-1 scores and pass@k can reward different properties of the sampled candidate set. It asks whether masked diffusion language models show a similar large-$k$ coverage effect when compared with autoregressive language models. The surrounding analyses of low-budget rankings, parser behavior, and per-question overlap are used to make that question measurable and interpretable.
 
-The experiments compare LLaDA, Dream, Qwen2.5, and Llama~3.1 on GSM8K, Countdown-cd4, and Trip Planning using shared downstream parsing and scoring. The results show a sampling-budget-dependent pattern rather than a universal winner. On Countdown-cd4, the evaluated diffusion base configurations have the strongest estimated stochastic pass@1 scores, but Qwen-Base and Llama-Base overtake them by pass@128. On Trip Planning, the evaluated Dream configurations are strongest in deterministic and low-budget settings, while a flat-prompt Llama-Instruct configuration gives the best observed high-budget result. GSM8K is close to saturated at high $k$ and mainly exposes prompt-format and answer-extraction sensitivity.
+The experiments compare LLaDA, Dream, Qwen2.5, and Llama~3.1 on GSM8K, Countdown-cd4, and Trip Planning with shared downstream parsing and scoring. The main pattern depends on sampling budget rather than giving a universal winner. On Countdown-cd4, LLaDA-Base and Dream-Base have the strongest estimated stochastic pass@1 scores, but Qwen-Base and Llama-Base overtake them by pass@128. On Trip Planning, Dream is strongest in deterministic and low-budget settings, while a flat-prompt Llama-Instruct run gives the best observed high-budget result. GSM8K is close to saturated at high $k$, so it mainly exposes prompt-format and answer-extraction sensitivity.
 
-The evaluated diffusion configurations do not show the same large-$k$ coverage advantage that motivated the study. Instead, the results suggest a practical trade-off: the evaluated diffusion configurations can be competitive when few candidates are available, while the evaluated Qwen/Llama configurations can benefit more from repeated stochastic sampling in some settings. Per-question analyses show overlapping but non-identical success sets, supporting complementarity rather than replacement. Future work should focus on verification, routing, selection, and parser-aware repair methods.
+The diffusion runs do not show the same large-$k$ coverage advantage that motivated the study. Instead, the evidence points to a practical trade-off: LLaDA and Dream can be competitive when only a few candidates are available, while Qwen and Llama benefit more from repeated stochastic sampling in several settings. Per-question analyses show that the success sets overlap but are not identical, which supports complementarity rather than replacement. The natural next step is to combine candidate generation with verification, routing, selection, or parser-aware repair.
 
 \vfill
 \noindent\footnotesize\textbf{Evaluation code and artifacts:} \url{https://github.com/MRehanK209/RCoT-Diffusion-LLM}
@@ -159,6 +159,11 @@ Z. He, T. Sun, Q. Tang, K. Wang, X. Huang, and X. Qiu,
 S. Nie, F. Zhu, Z. You, X. Zhang, J. Ou, J. Hu, J. Zhou, Y. Lin, J.-R. Wen, and C. Li,
 ``Large Language Diffusion Models,''
 \emph{arXiv preprint arXiv:2502.09992}, 2025.
+
+\bibitem{bie2025llada20}
+T. Bie \emph{et al.},
+``LLaDA2.0: Scaling Up Diffusion Language Models to 100B,''
+\emph{arXiv preprint arXiv:2512.15745}, 2025.
 
 \bibitem{gong2025scaling}
 S. Gong, S. Agarwal, Y. Zhang, J. Ye, L. Zheng, M. Li, C. An, P. Zhao, W. Bi, J. Han, H. Peng, and L. Kong,

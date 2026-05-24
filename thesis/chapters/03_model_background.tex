@@ -168,7 +168,7 @@ that the two processes organize test-time computation differently:
     \mathrm{dLLM:}\quad s=S\rightarrow 0,\quad U_s\subseteq\{1,\ldots,T\}.
 \end{equation}
 This interface may concentrate computation on refining a candidate sequence,
-which motivates testing whether the evaluated diffusion configurations behave differently under
+which motivates testing whether LLaDA and Dream behave differently under
 deterministic, low-budget, and high-budget pass@k evaluation.
 
 \subsection{Models Under Study}
@@ -187,6 +187,6 @@ advantage may disappear when many samples are available, because autoregressive
 models can use repeated stochastic decoding to expand the candidate set. Prior
 large-$k$ work on RLVR and base models shows that weaker pass@1 performance can
 coexist with stronger candidate-set coverage at high $k$ \cite{yue2025rlvr}.
-This thesis tests whether the evaluated diffusion configurations show a similar
-large-$k$ coverage effect. The evaluation therefore tracks performance across
+This thesis tests whether the diffusion runs show a similar large-$k$ coverage
+effect. The evaluation therefore tracks performance across
 the sampling budget instead of reporting only one accuracy number.

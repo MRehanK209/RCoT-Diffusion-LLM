@@ -1,49 +1,43 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Large language models are often evaluated as if reasoning quality were a
-property of a single generated answer. In practice, the answer is produced by a
-decoding process. Most current language-model reasoning systems use
-autoregressive decoding: they extend a prefix from left to right, and every
-later token is conditioned on choices that have already been made
+Large language models are often judged by a single generated answer, as if that
+answer were a direct readout of reasoning ability. In practice, however, the
+answer is the end point of a decoding procedure. Most current reasoning systems
+use autoregressive decoding: the model writes from left to right, and each later
+token conditions on choices already made
 \cite{vaswani2017attention,brown2020language}. This interface is simple,
-effective, and well supported by modern inference systems. It is also a
-particular way of spending computation. Once an early token has been emitted,
-later tokens can elaborate on it, but they do not naturally edit the prefix that
-created the current reasoning path.
+effective, and well supported by current inference systems, but it fixes early
+tokens before the rest of the reasoning trace is known. Later tokens can extend
+or explain the prefix; they do not naturally revise it.
 
-This matters because a reasoning benchmark only observes the answer a model
-actually produces: a completed trace, an extracted answer, and a scoring
-decision. If the trace is generated once, the evaluation rewards the quality of
-a single trajectory. If many traces are generated, the evaluation also rewards
-the model's ability to place at least one correct candidate in the sampled set.
-These two views can lead to different rankings even when the underlying
-benchmark is unchanged.
+For evaluation, that detail matters. A benchmark sees only the trace that was
+generated, the answer extracted from it, and the final scoring decision. With
+one sample, the score reflects one trajectory. With many samples, the score also
+depends on whether at least one useful candidate appears somewhere in the set.
+The same benchmark can therefore produce different rankings once the sampling
+budget changes.
 
-Recent work on reinforcement learning with verifiable rewards makes this
-budget dependence explicit. Yue et al. find that RLVR-trained models can be
-stronger than their base models at small $k$, while the corresponding base
-models can obtain higher pass@k scores when $k$ is large
-\cite{yue2025rlvr}. The interpretation is that top-1 benchmark performance
-does not necessarily measure the same property as broad candidate-set
-coverage: a model that is less concentrated by post-training may sample more
-varied reasoning attempts. This observation motivates the central evaluation
-question in this thesis. Instead of assuming that the best first answer also
-defines the best model family, the experiments ask whether a similar
-low-$k$ versus high-$k$ separation appears for diffusion and autoregressive
-language models.
+This budget dependence is clear in recent work on reinforcement learning with
+verifiable rewards. Yue et al. report that RLVR-trained models can lead their
+base models at small $k$, while the base models can reach higher pass@k when
+$k$ is large \cite{yue2025rlvr}. The point is not simply that one model is
+better than another. Top-1 performance and broad candidate-set coverage can
+measure different behavior: a model shaped less strongly by post-training may
+sample a wider range of reasoning attempts. That result motivates the question
+studied here: if this low-$k$ versus high-$k$ split appears among RLVR and base
+autoregressive models, does anything similar appear when the generation
+interface is changed to diffusion?
 
-The issue becomes concrete on reasoning and planning tasks that combine local
-steps with global constraints. In Countdown-cd4, a model must use the available
-numbers in a valid arithmetic chain; one poor intermediate operation can leave
-no useful route to the target. In Trip Planning, the output must satisfy a city
-order, stay durations, and flight transitions at the same time
-\cite{xie2024travelplanner}. GSM8K is more familiar as arithmetic word-problem
-solving, but in this thesis it also tests answer-extraction behavior because
-the primary strict scorer requires a boxed final answer \cite{cobbe2021gsm8k}.
-These examples show why generation order, sample budget, and parser behavior
-are part of the measurement problem rather than incidental implementation
-details.
+The question is especially relevant for tasks with several constraints. In
+Countdown-cd4, a model must use the provided numbers in a valid arithmetic
+chain; a bad intermediate step can make the target unreachable. In Trip
+Planning, the itinerary must satisfy city order, stay durations, and flight
+transitions at the same time \cite{xie2024travelplanner}. GSM8K is a more
+standard arithmetic benchmark, but here it also tests answer extraction because
+the primary strict scorer expects a boxed final answer \cite{cobbe2021gsm8k}.
+These tasks make generation order, sample budget, and parser behavior part of
+the measurement problem, not just implementation details.
 
 Autoregressive models should not be treated as weak baselines. Chain-of-thought
 prompting and self-consistency show that repeated sampling can recover from
@@ -68,66 +62,65 @@ candidate sets that behave differently under pass@k evaluation. These are
 hypotheses about the decoding interface, not claims that diffusion models
 should be superior in general.
 
-The comparison is not between two isolated checkpoints, but between two ways of
-turning a prompt into a set of scored candidate answers. AR models expose
-test-time search mainly through repeated left-to-right samples. dLLMs expose
-additional choices inside the denoising process, including the sequence length,
-block structure, and number of refinement steps. The experiments keep the
-downstream scoring pipeline shared so that these generation choices can be
-examined through the same parsers and aggregate metrics.
+The comparison is therefore not just between isolated checkpoints. It is a
+comparison between two ways of turning a prompt into scored candidate answers.
+AR models expose test-time search mainly through repeated left-to-right
+sampling. dLLMs add choices inside the denoising process, such as sequence
+length, block structure, and number of refinement steps. The experiments keep
+the downstream scoring pipeline shared so that these generation choices are
+judged by the same parsers and aggregate metrics.
 
 \paragraph{Research questions.}
-The thesis separates the evaluation into three questions.
-\textbf{RQ1} asks whether model rankings change between greedy $n=1$ accuracy,
-low-budget sampling, and high-budget pass@k on reasoning and planning tasks.
-\textbf{RQ2} asks whether the evaluated diffusion configurations show the
-Yue-style large-$k$ coverage pattern, where weaker pass@1 performance can be
-offset by broader coverage when many samples are drawn. \textbf{RQ3} asks how
-much parser compatibility and per-question complementarity explain the observed
-differences. These questions treat the deterministic score, the low-$k$ sample
-set, and the high-$k$ pass@k curve as related but distinct evaluation regimes.
+The evaluation is organized around one motivating question and two supporting
+questions. The main question is \textbf{RQ1}: whether the diffusion runs show
+the same large-$k$ coverage pattern reported by Yue et al., where weaker pass@1
+performance can be offset by broader coverage when many samples are drawn.
+\textbf{RQ2} provides the measurement frame by asking whether model rankings
+change between greedy $n=1$ accuracy, low-budget sampling, and high-budget
+pass@k on reasoning and planning tasks. \textbf{RQ3} is interpretive: it asks
+how much parser compatibility and per-question complementarity help explain the
+observed differences. Together, these questions treat deterministic scoring,
+low-$k$ sampling, and high-$k$ pass@k as related but distinct evaluation
+regimes, with RQ2 and RQ3 supporting the main RQ1 comparison.
 
-The study compares two dLLM families: LLaDA and Dream
-\cite{nie2025llada,ye2025dream}. The AR side uses Qwen2.5 and Llama~3.1
-\cite{qwen2024qwen25,grattafiori2024llama}. The benchmark set covers GSM8K,
-Countdown-cd4, and Trip Planning. GSM8K and Trip Planning follow their
-published benchmark definitions \cite{cobbe2021gsm8k,xie2024travelplanner}.
-Hereafter, \emph{AR} denotes autoregressive models and \emph{dLLM} denotes
-diffusion large language models. The evaluation uses deterministic scoring,
-stochastic pass@k sampling, parser-based answer extraction, prompt-format
-ablations, and per-question correctness analysis.
+The study compares two dLLM families, LLaDA and Dream
+\cite{nie2025llada,ye2025dream}, against two AR families, Qwen2.5 and
+Llama~3.1 \cite{qwen2024qwen25,grattafiori2024llama}. The benchmark set covers
+GSM8K, Countdown-cd4, and Trip Planning. GSM8K and Trip Planning follow their
+published definitions \cite{cobbe2021gsm8k,xie2024travelplanner}. Hereafter,
+\emph{AR} denotes autoregressive models and \emph{dLLM} denotes diffusion large
+language models. The evaluation combines deterministic scoring, stochastic
+pass@k sampling, parser-based answer extraction, prompt-format ablations, and
+per-question correctness analysis.
 
-The three benchmarks are used for different reasons. GSM8K checks arithmetic
-reasoning and answer extraction in a setting where high-budget performance is
-close to saturation. Countdown-cd4 makes the search aspect visible because a
-candidate must satisfy exact arithmetic constraints before it can be counted as
-correct. Trip Planning extends the same idea to longer natural-language plans,
-where an output can fail because the plan is wrong or because the itinerary is
-not parseable. Together, the tasks separate reasoning quality, sampling
-behavior, and format compatibility more cleanly than a single
-accuracy number would allow.
+Each benchmark plays a different role. GSM8K checks arithmetic reasoning and
+answer extraction in a setting where high-budget scores are close to saturated.
+Countdown-cd4 makes the search aspect visible because a candidate must satisfy
+exact arithmetic constraints before it can count as correct. Trip Planning
+extends the same idea to longer natural-language plans, where an output can
+fail because the plan is wrong or because the itinerary cannot be parsed.
+Together, the tasks separate reasoning quality, sampling behavior, and format
+compatibility more clearly than a single accuracy number would.
 
-Countdown separates the models more clearly than GSM8K, while Trip Planning is
-harder to interpret because parser failures are common. In the evaluated
-planning settings, the evaluated diffusion configurations are competitive or
-leading in several low-$k$ settings, while the evaluated Qwen/Llama
-configurations can gain more from repeated stochastic sampling and overtake at
-higher pass@k budgets. GSM8K gives a different lesson: because high-$k$ scores
-are close to saturated, it mainly exposes prompt-format and answer-extraction
-sensitivity. The success sets overlap but are not identical, so hybrid systems
-may be worth studying.
+The empirical pattern is mixed. Countdown separates the models more clearly
+than GSM8K, while Trip Planning is harder to interpret because parser failures
+are common. In the planning settings, LLaDA and Dream are competitive or
+leading at several low-$k$ budgets, while Qwen and Llama can gain more from
+repeated stochastic sampling and overtake at higher pass@k. GSM8K gives a
+different lesson: because high-$k$ scores are close to saturated, it mainly
+exposes prompt-format and answer-extraction sensitivity. The success sets
+overlap but are not identical, which makes hybrid systems worth studying.
 
 \paragraph{Contributions.}
-This thesis makes three contributions:
+The work makes three contributions:
 \begin{itemize}
     \item It provides a shared downstream evaluation of two diffusion model
     families and two autoregressive model families at similar scale across
     arithmetic reasoning, symbolic planning, and structured natural-language
     planning.
     \item It shows that model rankings can change with the sampling budget:
-    the evaluated diffusion configurations are competitive or leading in
-    several low-$k$ settings, while the evaluated Qwen/Llama configurations
-    overtake in some high-$k$ settings.
+    LLaDA and Dream are competitive or leading in several low-$k$ settings,
+    while Qwen and Llama overtake in some high-$k$ settings.
     \item It adds parser-sensitivity, normalized-answer diversity,
     per-question correlation, and oracle-union analyses to show where the
     paradigms overlap and where they remain complementary.
@@ -135,12 +128,11 @@ This thesis makes three contributions:
 
 \paragraph{Roadmap.}
 Chapter~\ref{sec:related-work} reviews autoregressive, masked, and diffusion
-language modeling, with emphasis on what prior work leaves unresolved for
-reasoning and planning evaluation. Chapter~\ref{sec:model-background} gives the
-formal generation background and states the hypothesis tested in the thesis.
-Chapter~\ref{sec:methodology} describes the benchmarks, prompt modes,
-generation settings, and parsers. Chapter~\ref{sec:results} presents the main
-results, moving from the diffusion hyperparameter sweep to GSM8K,
-Countdown-cd4, Trip Planning, parser effects, sampling behavior, and
-per-question analyses. Chapters~\ref{sec:discussion} to~\ref{sec:conclusion}
+language modeling, focusing on what remains unresolved for reasoning and
+planning evaluation. Chapter~\ref{sec:model-background} introduces the
+generation background and states the hypothesis. Chapter~\ref{sec:methodology}
+describes the benchmarks, prompt modes, generation settings, and parsers.
+Chapter~\ref{sec:results} presents the empirical results, from the diffusion
+hyperparameter sweep through GSM8K, Countdown-cd4, Trip Planning, parser
+effects, sampling behavior, and per-question analyses. The final chapters
 discuss the findings, limitations, and conclusions.

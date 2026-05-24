@@ -1,14 +1,43 @@
 \section{Discussion}
 \label{sec:discussion}
 
-The main result is not that diffusion wins or that autoregression wins. In these runs, the ranking depends on the sampling budget and on the parser constraints imposed by each benchmark. Greedy $n=1$ accuracy, estimated stochastic pass@1, a low-$k$ sample set, and a high-$k$ pass@k curve reward different behavior, especially when a correct output has to satisfy several constraints at once.
+The main takeaway is deliberately modest: the experiments do not produce a
+single winner between diffusion and autoregression. The ranking changes with
+the sampling budget and with the parser constraints of the benchmark. Greedy
+$n=1$ accuracy, estimated stochastic pass@1, low-$k$ sampling, and high-$k$
+pass@k each reward a slightly different kind of behavior, especially when a
+valid answer must satisfy several constraints at once.
 
-Countdown-cd4 is the cleanest example. In the base condition, LLaDA-Base and Dream-Base lead at estimated stochastic pass@1, but Qwen-Base and Llama-Base overtake them by pass@128. The paired bootstrap comparisons support both sides of that reversal for the main LLaDA--Qwen comparison. A single top-1 score would miss the evaluated Qwen/Llama configurations' larger gains from repeated stochastic sampling.
+Countdown-cd4 shows this most clearly. In the base condition, LLaDA-Base and
+Dream-Base lead at estimated stochastic pass@1. By pass@128, Qwen-Base and
+Llama-Base have overtaken them. The paired bootstrap comparisons support both
+sides of the LLaDA--Qwen reversal. If only a single top-1 score were reported,
+the larger gains from repeated Qwen and Llama sampling would be easy to miss.
 
-Trip Planning gives a related but less tidy picture. The evaluated Dream configurations are strong in deterministic and low-$k$ settings, while Llama-Instruct with the flat prompt gives the strongest observed high-$k$ result. The caveat is larger than for Countdown because many candidate itineraries fail before semantic scoring. The benchmark therefore mixes planning ability with the ability to produce the expected itinerary format, and some high-$k$ differences are less stable than the Countdown reversal.
+Trip Planning follows the same broad theme, but with more noise. Dream is
+strong in deterministic and low-$k$ settings, while flat-prompt Llama-Instruct
+gives the strongest observed high-$k$ result. The caveat is important: many
+candidate itineraries fail before semantic scoring. The benchmark therefore
+mixes planning quality with the ability to produce the expected itinerary
+format, which makes the high-$k$ differences less clean than on Countdown.
 
-GSM8K is different again. The main runs approach saturation at high $k$, so small ranking differences are not very informative as evidence about generation interfaces. GSM8K is more useful in this thesis as a diagnostic for prompt format and answer extraction, especially the boxed-answer requirement in the primary strict scorer.
+GSM8K plays a different role. The main runs approach saturation at high $k$, so
+small ranking differences there are weak evidence about generation interfaces.
+In this thesis, GSM8K is more useful as a check on prompt format and answer
+extraction, especially the boxed-answer requirement in the primary strict
+scorer.
 
-The thesis was motivated by Yue et al.'s large-$k$ result, where models that are weaker at pass@1 can become stronger when many samples are inspected \cite{yue2025rlvr}. Under the tested configurations, the evaluated diffusion configurations do not show the analogous large-$k$ coverage effect. The evaluated Qwen/Llama configurations often gain more from repeated stochastic sampling. This suggests a generation-interface pattern in these runs, but it does not isolate architecture because prompt interface, post-training, tokenizer behavior, and backend all vary together.
+The original motivation came from Yue et al.'s large-$k$ result: models that are
+weaker at pass@1 can become stronger when many samples are inspected
+\cite{yue2025rlvr}. Under the tested settings, LLaDA and Dream do not show the
+analogous large-$k$ coverage effect. Qwen and Llama often gain more from
+repeated stochastic sampling. That pattern is suggestive, but it should not be
+over-read as a pure architectural conclusion, since prompt interface,
+post-training, tokenizer behavior, and backend also vary.
 
-The per-question and oracle-union analyses show that the success sets overlap but are not identical. That is encouraging, but only as a diagnostic upper bound: the oracle assumes correctness is known at selection time. Practical gains would require a verifier, router, selector, or parser-aware repair method that can choose among candidates without access to the gold answer.
+Finally, the per-question and oracle-union analyses show overlap without
+identity. Some questions are solved by one model family and not another. That is
+useful evidence of complementarity, but only as an upper bound: the oracle
+assumes correctness is known at selection time. A practical system would need a
+verifier, router, selector, or parser-aware repair step to choose among
+candidates without seeing the gold answer.

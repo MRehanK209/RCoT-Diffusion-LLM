@@ -35,43 +35,46 @@ All models are evaluated through the same measurement pipeline after generation.
 \begin{figure}[!htbp]
     \centering
     \includegraphics[width=0.98\textwidth]{images/eval_pipeline_ar_vs_dllm.png}
-    \caption{Unified evaluation pipeline. Prompt construction is shared, generation is model-specific, and parsing, pass@k aggregation, and per-question analyses are applied to all completions.}
+    \caption{Unified evaluation pipeline for AR and diffusion runs.}
     \label{fig:eval-pipeline-ar-vs-dllm}
 \end{figure}
 
 \subsection{Generation and pass@k Evaluation}
 
-As shown in Figure~\ref{fig:eval-pipeline-ar-vs-dllm}, diffusion and autoregressive checkpoints enter different inference backends but are evaluated by the same downstream metrics. Diffusion-based generation uses \texttt{fast-dLLM}, while autoregressive generation uses \texttt{vLLM}. Deterministic comparisons use temperature $=0$ and generate one sample per question. Stochastic evaluations use temperature $=0.7$.
+Figure~\ref{fig:eval-pipeline-ar-vs-dllm} shows the split between generation
+and scoring. Diffusion runs are generated with \texttt{fast-dLLM}; AR runs are
+generated with \texttt{vLLM}. After generation, the same downstream parsers and
+metrics are used for both groups. Deterministic runs use temperature $=0$ and
+one completion per question. Stochastic runs use temperature $=0.7$.
 
-The thesis uses three related top-1 terms. \emph{Greedy $n=1$ accuracy}
-refers to the deterministic temperature-$0$ setting with one generated
-completion. \emph{First stochastic sample accuracy} refers to the correctness of
-the first saved sample in a stochastic $n>1$ run. \emph{Estimated stochastic
-pass@1} is the $k=1$ case of the pass@k estimator below; for a question with
-$r$ correct samples out of $n$, it equals $r/n$. Unless a result is explicitly
-called deterministic or first-sample accuracy, pass@1 in the stochastic
-pass@k tables and figures means this estimated stochastic pass@1.
+The term pass@1 needs a little care. I use \emph{greedy $n=1$ accuracy} for
+the deterministic temperature-$0$ run with one completion. \emph{First
+stochastic sample accuracy} means the correctness of the first saved completion
+from a stochastic run. \emph{Estimated stochastic pass@1} is different again:
+it is the $k=1$ case of the pass@k estimator, so for a question with $r$ correct
+samples among $n$ saved samples, it equals $r/n$. Unless a result is explicitly
+called deterministic or first-sample accuracy, pass@1 in stochastic pass@k
+tables and figures refers to this estimated stochastic pass@1.
 
-The number of samples per question depends on the benchmark:
-\begin{itemize}
-    \item GSM8K and Countdown-cd4: up to $128$ samples
-    \item Trip Planning: up to $64$ samples (due to longer outputs and stricter parsing)
-\end{itemize}
+The sample budget is benchmark-dependent. GSM8K and Countdown-cd4 use up to
+$128$ samples per question. Trip Planning uses up to $64$ samples because the
+outputs are longer and the parser is stricter.
 
-For each question, let $n$ be the number of generated samples and $r$ the number of correct samples. The pass@k estimator is defined as:
+For a question with $n$ generated samples and $r$ correct samples, the pass@k
+estimator is:
 
 \begin{equation}
     \operatorname{pass@}k = 1 - \frac{\binom{n-r}{k}}{\binom{n}{k}}.
 \end{equation}
 
-This metric estimates the probability that at least one of $k$ sampled outputs is correct. Greedy $n=1$ accuracy measures one deterministic completion, first stochastic sample accuracy measures one draw from a stochastic run, and stochastic pass@k measures whether the sampled candidate set contains a correct solution.
-It is included because the motivating question concerns candidate-set coverage
-as well as first-sample quality: previous large-$k$ reasoning evaluations have
-shown that these two views can lead to different model rankings
-\cite{yue2025rlvr}.
-Throughout the thesis, pass@k is interpreted as candidate-set coverage under
-the sampled completions, not as a guarantee that a deployable system can
-identify the correct candidate without an external verifier.
+This estimates the probability that at least one of $k$ sampled outputs is
+correct. Greedy accuracy asks what happens when the model gets one deterministic
+try. Stochastic pass@k asks whether the saved candidate set contains a correct
+solution. The distinction is central here because large-$k$ reasoning
+evaluations show that first-sample quality and candidate-set coverage can lead
+to different model rankings \cite{yue2025rlvr}. Throughout the thesis, pass@k
+is treated as coverage in the sampled completions. It is not a claim that a
+deployed system could identify the correct candidate without a verifier.
 
 \subsection{Parser-Controlled Scoring}
 \label{sec:parser-details}
@@ -200,7 +203,7 @@ Only parsed and validated outputs are converted into correctness labels.
     
     \end{tikzpicture}%
     }
-    \caption{Parser-controlled scoring. Raw completions are parsed and validated before they are converted into task-specific correctness vectors and aggregate metrics.}
+    \caption{Parser-controlled scoring from completions to metrics.}
     \label{fig:parser-pipeline}
     \end{figure}
 
@@ -238,27 +241,4 @@ The inference backend remains model-specific.
     \item Trip Planning: 200 questions, 2 few-shot examples, 64 samples
 \end{itemize}
 
-Generation length is adjusted per task: shorter for Countdown expressions and longer for GSM8K reasoning traces and Trip Planning outputs. Dataset subsampling uses fixed seeds where implemented in the loaders, but repeated sampling seeds are not available as independent runs.
-The full configuration is limited to what is recorded in filenames, result
-metadata, and the repository experiment notes.
-
-\begin{table}[!htbp]
-\centering
-\caption{Main experimental conditions. Parameters are taken from result
-filenames, comparison JSONs, and repository experiment notes.}
-\label{tab:main-experimental-conditions}
-\scriptsize
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{llcllclclll}
-\toprule
-\textbf{Benchmark} & \textbf{Questions} & \textbf{Few-shot} & \textbf{Prompt mode} & \textbf{Models} & \textbf{Backend} & \textbf{Temp.} & \textbf{Samples} & \textbf{Max len.} & \textbf{Steps / block} & \textbf{Artifact} \\
-\midrule
-GSM8K & 128 & 4 & base native & LLaDA, Dream, Qwen, Llama base & fast-dLLM / vLLM & 0.7 & 128 & 256 & dLLM: 256 / 32 & \texttt{milestone2\_gsm8k\_base} \\
-GSM8K & 128 & 4 & instruct templated / flat & LLaDA, Dream, Qwen, Llama instruct & fast-dLLM / vLLM & 0.7 & 128 & 256 & LLaDA: 256 / 8; Dream: 256 / 32 & \texttt{milestone2\_gsm8k\_instruct} \\
-Countdown-cd4 & 992 & 8 & base native & LLaDA, Dream, Qwen, Llama base & fast-dLLM / vLLM & 0.7 & 128 & 32 & dLLM: 32 / 32 & \texttt{milestone2\_countdown\_base\_refresh} \\
-Countdown-cd4 & 992 & 8 & instruct templated & LLaDA, Dream, Qwen, Llama instruct & fast-dLLM / vLLM & 0.7 & 128 & 32 & dLLM: 32 / 32 & \texttt{milestone2\_countdown\_instruct\_refresh} \\
-Trip Planning & 200 & 2 & base native & LLaDA, Dream, Qwen, Llama base & fast-dLLM / vLLM & 0.7 & 64 & 256 & dLLM: 256 / 32 & \texttt{trip\_planning} pass@k artifacts \\
-Trip Planning & 200 & 2 & instruct templated / flat & LLaDA, Dream, Qwen, Llama instruct & fast-dLLM / vLLM & 0.7 & 64 & 256 & dLLM: 256 / 32; LLaDA flat: 256 / 16 & \texttt{trip\_planning} pass@k artifacts \\
-\bottomrule
-\end{tabular}}
-\end{table}
+Generation length is adjusted per task: shorter for Countdown expressions and longer for GSM8K reasoning traces and Trip Planning outputs. Dataset subsampling uses fixed seeds where implemented in the loaders, but repeated sampling seeds are not available as independent runs. Command-level configuration details are left to the repository artifacts rather than repeated as a separate table.

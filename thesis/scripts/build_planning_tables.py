@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate appendix pass@k and bootstrap-CI tables from stored artifacts."""
+"""Generate appendix planning pass@k tables from stored artifacts."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class RunSpec:
 RUNS = [
     RunSpec(
         "countdown_base",
-        "Countdown-cd4 base main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 base pass@k.",
         "tab:countdown-base-main-passk",
         "LLaDA-Base",
         "results/milestone2_countdown_base_refresh/GSAI-ML_LLaDA-8B-Base_countdown_cd4_32_32_32_8_0.7_8_992_128_generations_base_native_fast_dllm.json",
@@ -42,7 +42,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_base",
-        "Countdown-cd4 base main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 base pass@k.",
         "tab:countdown-base-main-passk",
         "Dream-Base",
         "results/milestone2_countdown_base_refresh/Dream-org_Dream-v0-Base-7B_countdown_cd4_32_32_32_8_0.7_8_992_128_generations_base_native_fast_dllm.json",
@@ -50,7 +50,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_base",
-        "Countdown-cd4 base main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 base pass@k.",
         "tab:countdown-base-main-passk",
         "Qwen-Base",
         "results/milestone2_countdown_base_refresh/Qwen_Qwen2.5-7B_countdown_cd4_32_8_0.7_8_992_128_generations_base_native_vllm.json",
@@ -58,7 +58,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_base",
-        "Countdown-cd4 base main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 base pass@k.",
         "tab:countdown-base-main-passk",
         "Llama-Base",
         "results/milestone2_countdown_base_refresh/meta-llama_Llama-3.1-8B_countdown_cd4_32_8_0.7_8_992_128_generations_base_native_vllm.json",
@@ -66,7 +66,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_instruct",
-        "Countdown-cd4 instruct-templated main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 instruct pass@k.",
         "tab:countdown-instruct-main-passk",
         "LLaDA-Instruct",
         "results/milestone2_countdown_instruct_refresh/GSAI-ML_LLaDA-8B-Instruct_countdown_cd4_32_32_32_8_0.7_8_992_128_generations_instruct_templated_fast_dllm.json",
@@ -74,7 +74,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_instruct",
-        "Countdown-cd4 instruct-templated main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 instruct pass@k.",
         "tab:countdown-instruct-main-passk",
         "Dream-Instruct",
         "results/milestone2_countdown_instruct_refresh/Dream-org_Dream-v0-Instruct-7B_countdown_cd4_32_32_32_8_0.7_8_992_128_generations_instruct_templated_fast_dllm.json",
@@ -82,7 +82,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_instruct",
-        "Countdown-cd4 instruct-templated main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 instruct pass@k.",
         "tab:countdown-instruct-main-passk",
         "Qwen-Instruct",
         "results/milestone2_countdown_instruct_refresh/Qwen_Qwen2.5-7B-Instruct_countdown_cd4_32_8_0.7_8_992_128_generations_instruct_templated_vllm.json",
@@ -90,7 +90,7 @@ RUNS = [
     ),
     RunSpec(
         "countdown_instruct",
-        "Countdown-cd4 instruct-templated main run pass@k, $n=128$, temperature $=0.7$.",
+        "Countdown-cd4 instruct pass@k.",
         "tab:countdown-instruct-main-passk",
         "Llama-Instruct",
         "results/milestone2_countdown_instruct_refresh/meta-llama_Llama-3.1-8B-Instruct_countdown_cd4_32_8_0.7_8_992_128_generations_instruct_templated_vllm.json",
@@ -98,7 +98,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_base",
-        "Trip Planning base stochastic run pass@k, $n=64$, temperature $=0.7$.",
+        "Trip Planning base pass@k.",
         "tab:trip-base-main-passk",
         "LLaDA-Base",
         "results/milestone2_trip_planning_llada_passk/GSAI-ML_LLaDA-8B-Base_trip_planning_256_256_32_1_0.7_2_200_64_generations_base_native_fast_dllm.json",
@@ -106,7 +106,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_base",
-        "Trip Planning base stochastic run pass@k, $n=64$, temperature $=0.7$.",
+        "Trip Planning base pass@k.",
         "tab:trip-base-main-passk",
         "Dream-Base",
         "results/Dream-org_Dream-v0-Base-7B_trip_planning_256_256_32_1_0.7_2_200_64_generations_fast_dllm.json",
@@ -114,7 +114,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_base",
-        "Trip Planning base stochastic run pass@k, $n=64$, temperature $=0.7$.",
+        "Trip Planning base pass@k.",
         "tab:trip-base-main-passk",
         "Qwen-Base",
         "results/Qwen_Qwen2.5-7B_trip_planning_256_1_0.7_2_200_64_generations_vllm.json",
@@ -122,7 +122,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_base",
-        "Trip Planning base stochastic run pass@k, $n=64$, temperature $=0.7$.",
+        "Trip Planning base pass@k.",
         "tab:trip-base-main-passk",
         "Llama-Base",
         "results/milestone2_trip_planning_llama_passk/meta-llama_Llama-3.1-8B_trip_planning_256_1_0.7_2_200_64_generations_base_native_vllm.json",
@@ -130,7 +130,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_instruct",
-        "Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.",
+        "Trip Planning instruct pass@k.",
         "tab:trip-instruct-main-passk",
         "LLaDA-Instruct",
         "results/milestone2_trip_planning_llada_passk/GSAI-ML_LLaDA-8B-Instruct_trip_planning_256_256_16_1_0.7_2_200_64_generations_instruct_templated_fast_dllm.json",
@@ -138,7 +138,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_instruct",
-        "Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.",
+        "Trip Planning instruct pass@k.",
         "tab:trip-instruct-main-passk",
         "LLaDA-Instruct flat",
         "results/milestone2_trip_planning_llada_passk/GSAI-ML_LLaDA-8B-Instruct_trip_planning_256_256_16_1_0.7_2_200_64_generations_instruct_flat_fast_dllm.json",
@@ -146,7 +146,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_instruct",
-        "Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.",
+        "Trip Planning instruct pass@k.",
         "tab:trip-instruct-main-passk",
         "Dream-Instruct",
         "results/Dream-org_Dream-v0-Instruct-7B_trip_planning_256_256_32_1_0.7_2_200_64_generations_fast_dllm.json",
@@ -154,7 +154,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_instruct",
-        "Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.",
+        "Trip Planning instruct pass@k.",
         "tab:trip-instruct-main-passk",
         "Qwen-Instruct",
         "results/Qwen_Qwen2.5-7B-Instruct_trip_planning_256_1_0.7_2_200_64_generations_vllm.json",
@@ -162,7 +162,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_instruct",
-        "Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.",
+        "Trip Planning instruct pass@k.",
         "tab:trip-instruct-main-passk",
         "Llama-Instruct",
         "results/milestone2_trip_planning_llama_passk/meta-llama_Llama-3.1-8B-Instruct_trip_planning_256_1_0.7_2_200_64_generations_instruct_templated_vllm.json",
@@ -170,7 +170,7 @@ RUNS = [
     ),
     RunSpec(
         "trip_instruct",
-        "Trip Planning instruct stochastic run pass@k, $n=64$, temperature $=0.7$. Flat rows use flat completion-style prompts rather than chat templates.",
+        "Trip Planning instruct pass@k.",
         "tab:trip-instruct-main-passk",
         "Llama-Instruct flat",
         "results/milestone2_trip_planning_llama_passk/meta-llama_Llama-3.1-8B-Instruct_trip_planning_256_1_0.7_2_200_64_generations_instruct_flat_vllm.json",
@@ -279,18 +279,6 @@ def main() -> None:
     ]
     for condition in ordered:
         content.append(table_for_condition(condition, grouped[condition], with_ci=False))
-
-    content.extend(
-        [
-            "\\FloatBarrier",
-            "\\subsection{Bootstrap confidence intervals for planning pass@k}",
-            "\\label{sec:appendix-bootstrap-ci}",
-            f"Intervals use {BOOTSTRAPS} bootstrap resamples over questions with fixed seed {BOOTSTRAP_SEED}. They quantify uncertainty from the finite question set, not variability across repeated sampling seeds.",
-            "",
-        ]
-    )
-    for condition in ordered:
-        content.append(table_for_condition(condition, grouped[condition], with_ci=True))
 
     OUT.write_text("\n".join(content) + "\n")
     print(f"Wrote {OUT}")

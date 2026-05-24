@@ -2,25 +2,45 @@
 \label{sec:related-work}
 
 \subsection{Autoregressive Language Models}
-Autoregressive language models define sequence probability by predicting each
-token from its prefix. Transformer decoders made this objective scalable by
-combining causal self-attention with highly parallel training over token
-positions \cite{vaswani2017attention}. The same next-token objective underlies
-the dominant large-language-model interface: prompt a decoder-only model,
-generate one token at a time, and optionally sample multiple completions when
-the task admits several plausible reasoning paths \cite{brown2020language}.
-The evaluated AR families, Qwen2.5 and Llama~3.1, use this paradigm at modern
-scale \cite{qwen2024qwen25,grattafiori2024llama}. This paradigm remains strong
-because it is simple to train, aligns naturally with open-ended text
-continuation, and follows well-studied scaling behavior with data, parameters,
-and compute \cite{kaplan2020scaling,hoffmann2022training}. It is also supported
-by mature serving infrastructure such as PagedAttention/vLLM for
-high-throughput decoding \cite{kwon2023pagedattention}.
+Autoregressive language models assign probabilities by predicting each token
+from its prefix. Transformer decoders made this objective practical at scale by
+combining causal self-attention with parallel training over token positions
+\cite{vaswani2017attention}. The same next-token objective is still the usual
+interface for large language models: provide a prompt, generate one token after
+another, and sample several completions when the task may have several plausible
+reasoning paths \cite{brown2020language}. Qwen2.5 and Llama~3.1, the AR
+families evaluated here, follow this paradigm at modern scale
+\cite{qwen2024qwen25,grattafiori2024llama}. Its appeal is practical as well as
+statistical: it is straightforward to train, fits open-ended text continuation,
+has well-studied scaling behavior, and is supported by mature serving systems
+such as PagedAttention/vLLM \cite{kaplan2020scaling,hoffmann2022training,kwon2023pagedattention}.
 
-The limitations of autoregressive generation follow from the same factorization. At inference time, tokens are generated sequentially, so latency grows with output length and each decision is conditioned on a committed prefix. Stochastic decoding partly compensates for this rigidity by producing multiple candidate chains. Chain-of-thought prompting and self-consistency show that repeated sampling can improve reasoning performance by aggregating final answers across sampled solutions \cite{wei2022chain,wang2023selfconsistency}. The pass@k metric, originally popularized in code-generation evaluation, formalizes the same idea as the probability that at least one of $k$ samples is correct \cite{chen2021humaneval}. Large-$k$ evaluations have also been used to reveal ranking reversals that are invisible at pass@1: in RLVR-trained reasoning models, Yue et al. report that post-trained models can lead at small $k$, while base models can overtake at large $k$ because their sampled candidate sets cover more solutions \cite{yue2025rlvr}. These results make autoregressive models the appropriate baseline for reasoning and planning, but they also show that single-sample accuracy is not sufficient to characterize these systems.
+The drawback is tied to the same factorization. At inference time, the model
+writes sequentially; latency grows with output length, and every decision is
+conditioned on a prefix that has already been committed. Sampling several
+chains is one way to soften that commitment. Chain-of-thought prompting and
+self-consistency show that repeated samples can improve reasoning by pooling
+answers across different solution traces \cite{wei2022chain,wang2023selfconsistency}.
+Pass@k, first popularized in code-generation evaluation, captures the same
+idea as the probability that at least one of $k$ samples is correct
+\cite{chen2021humaneval}. Large-$k$ reasoning evaluations also reveal ranking
+changes that pass@1 hides: Yue et al. report that RLVR-trained models can lead
+at small $k$, while their base models can overtake at large $k$ because the
+sampled sets cover more solutions \cite{yue2025rlvr}. For this thesis, that
+result is the key methodological warning: a single sampled answer is not enough
+to characterize how a reasoning system behaves.
 
 \subsection{Non-Autoregressive, Masked, and Iterative Text Generation}
-Diffusion language models inherit ideas from earlier work on bidirectional and iterative generation. Masked language modeling trains a model to recover hidden tokens from both left and right context, producing strong bidirectional representations even though BERT itself is not a left-to-right generator \cite{devlin2019bert}. Conditional masked language models extended this idea to generation by repeatedly masking and replacing low-confidence tokens, allowing multiple positions to be updated in parallel rather than committing to a strict left-to-right order \cite{ghazvininejad2019maskpredict}. These methods established a key design axis that remains central today: generation can be viewed either as sequential commitment or as iterative refinement.
+Diffusion language models build on a longer line of bidirectional and
+iterative text generation. Masked language modeling trains a model to recover
+hidden tokens using context from both sides; BERT is not a left-to-right
+generator, but it made this bidirectional view central to modern NLP
+\cite{devlin2019bert}. Conditional masked language models then adapted the idea
+for generation by repeatedly replacing low-confidence tokens, so several
+positions could be updated in parallel instead of being fixed strictly from
+left to right \cite{ghazvininejad2019maskpredict}. That line of work already
+sets up the main design contrast used here: generation as sequential commitment
+versus generation as iterative refinement.
 
 The masked and iterative view is especially relevant for structured outputs. Because later refinement steps can condition on partial content on both sides, non-autoregressive methods are naturally suited to infilling, editing, and constraint satisfaction. However, early masked-generation systems were typically evaluated on narrower conditional-generation tasks and did not match the scale, instruction-following ability, or infrastructure maturity of modern autoregressive LLMs. Recent diffusion-based LLMs can therefore be understood not as an isolated departure, but as a large-scale continuation of masked denoising and iterative refinement.
 
@@ -32,18 +52,55 @@ Large diffusion language models scale this denoising perspective to contemporary
 These advantages should be read as conditional rather than automatic. The quality and efficiency of a diffusion LM depend on the noise schedule, number of denoising steps, block length, confidence thresholding, cache strategy, model scale, and post-training procedure. In particular, the practical latency benefit of diffusion depends on whether parallel token updates compensate for repeated denoising passes and whether the inference system can reuse computation effectively.
 
 \subsection{Comparative Studies of Autoregressive and Diffusion Language Models}
-Recent comparisons have begun to move beyond the question of whether diffusion LMs can generate fluent text. Work on adapting autoregressive models into diffusion models reports competitive language modeling, reasoning, commonsense, infilling, and instruction-following results, but it also highlights why fair comparison is difficult: training data, initialization, and objectives can differ across paradigms \cite{gong2025scaling}. LLaDA and Dream similarly show that diffusion LMs can be competitive with autoregressive baselines on broad benchmark suites, while leaving open which observed gains are due to denoising, scale, data, post-training, or benchmark interface \cite{nie2025llada,ye2025dream}.
+Recent comparisons have moved beyond the basic question of whether diffusion
+LMs can produce fluent text. Work that adapts autoregressive models into
+diffusion models reports competitive language modeling, reasoning, commonsense,
+infilling, and instruction-following results, while also showing why clean
+comparison is hard: training data, initialization, and objectives may all
+differ across paradigms \cite{gong2025scaling}. LLaDA and Dream make a similar
+point from the model side. They show that diffusion LMs can be competitive on
+broad benchmark suites, but they do not by themselves isolate whether a gain
+comes from denoising, scale, data, post-training, or the benchmark interface
+\cite{nie2025llada,ye2025dream}.
 
-Other studies focus on dimensions that standard benchmark tables often hide. A text-embedding comparison argues that diffusion LMs' bidirectional architecture is better aligned with retrieval and long-document representation than the unidirectional attention inherited from autoregressive pre-training \cite{zhang2025embedding}. Systems-oriented analyses characterize latency and throughput trade-offs, finding that diffusion can exploit more sequence-level parallelism but may struggle with long contexts or batched serving unless decoding schedules and caching are carefully designed \cite{kim2025beyond}. Fast-dLLM addresses part of this deployment gap by introducing approximate KV caching and confidence-aware parallel decoding for diffusion LLMs, directly targeting the inference-system maturity that autoregressive models already enjoy \cite{wu2025fastdllm}. Together, these studies make the comparison multi-dimensional: generation order, objective, decoding budget, context length, controllability, latency, throughput, and evaluation protocol can each change the conclusion.
+Other work examines dimensions that are easy to miss in a single benchmark
+table. A text-embedding comparison argues that bidirectional diffusion
+architectures can be better aligned with retrieval and long-document
+representation than the unidirectional attention inherited from autoregressive
+pre-training \cite{zhang2025embedding}. Systems-oriented analyses study latency
+and throughput, finding that diffusion can use more sequence-level parallelism
+but may struggle with long contexts or batched serving unless decoding schedules
+and caching are designed carefully \cite{kim2025beyond}. Fast-dLLM addresses
+part of this deployment gap through approximate KV caching and confidence-aware
+parallel decoding \cite{wu2025fastdllm}. Taken together, this literature makes
+the comparison multi-dimensional: generation order, objective, decoding budget,
+context length, controllability, latency, throughput, and evaluation protocol
+can each change the conclusion.
 
 \subsection{Evaluation Gaps and Motivation for This Work}
-Prior work shows that diffusion language models can generate fluent text and can be competitive on several benchmark suites. It does not fully resolve how they should be compared with autoregressive models on reasoning and planning tasks. Existing comparisons often differ in model size, tokenizer, initialization, training data, prompt format, denoising schedule, sampling budget, or inference backend. These differences make it difficult to tell whether an observed gain comes from the generation interface or from surrounding experimental choices.
+Prior work shows that diffusion language models can generate fluent text and
+can be competitive on several benchmark suites. What remains less clear is how
+to compare them with autoregressive models on reasoning and planning tasks.
+Existing studies often vary model size, tokenizer, initialization, training
+data, prompt format, denoising schedule, sampling budget, or inference backend
+at the same time. When those factors move together, it is hard to tell whether
+an observed gain comes from the generation interface or from the surrounding
+experimental setup.
 
-Reasoning benchmarks add another complication. A single deterministic answer and a many-sample pass@k score measure different things. The first rewards the quality of one decoded solution; the second rewards the ability to produce a candidate set that contains at least one correct answer. The RLVR/base-model reversal observed by Yue et al. is one example of why this distinction matters: a model that looks weaker under top-1 evaluation can still expose more correct candidates when the sampling budget is large \cite{yue2025rlvr}. Parser behavior can also change the measured outcome, especially when a task requires a specific output format. Finally, aggregate accuracy does not show whether two models solve the same questions or different ones.
+Reasoning benchmarks complicate the picture further. A single deterministic
+answer and a many-sample pass@k score reward different things. The first asks
+whether one decoded solution is correct; the second asks whether the candidate
+set contains at least one correct answer. Yue et al.'s RLVR/base-model reversal
+is a concrete example: a model that looks weaker under top-1 evaluation can
+still reveal more correct candidates when the sampling budget is large
+\cite{yue2025rlvr}. Parser behavior can also shift measured accuracy,
+especially when a task expects a specific output format. Aggregate scores then
+hide another question: whether different models solve the same instances or
+different ones.
 
-These gaps motivate the evaluation design used in this thesis. Before
-interpreting a possible paradigm difference, the comparison must make the
-prompt interface, denoising or sampling budget, parser behavior, and benchmark
-structure explicit. This thesis therefore evaluates not only which model has
-the highest score, but how the score changes when the evaluator is allowed to
-inspect more sampled candidates.
+These gaps shape the evaluation design in this thesis. Before interpreting a
+possible paradigm difference, the comparison needs to make the prompt interface,
+denoising or sampling budget, parser behavior, and benchmark structure explicit.
+The goal is therefore not only to ask which model has the highest score, but to
+track how that score changes when the evaluator can inspect more sampled
+candidates.
