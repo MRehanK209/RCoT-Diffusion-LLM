@@ -10,24 +10,22 @@ Input: 60`
 - Qwen: `23-10=13,3*28=84,13+84=97,39*2=7`
 
 ### AR-only solved
-- Question: `97,2,59,5,14`
-- Qwen: `97-59=38,38/2=19,19-5=14
+- Question: `65,56,70,1,14`
+- Llama: `70-65=5,5-1=4,56/4=14
+`
+- LLaDA: `65+56=121,121-70=51,51/3=14
 
-Input: 80,4`
-- LLaDA: `97/2=48,59/5=34,48-34=14
+Input: `
 
-Input: 97,`
+### Both model groups solved
+- Question: `2,11,16,7,87`
+- Dream: `16-2=14,14*7=98,98-11=87
 
-### Both paradigms solved
-- Question: `57,61,22,15,41`
-- LLaDA: `57+21=78,22+15=37,78-37=41
+Input: 99,1`
+- Llama: `16-2=14,14*7=98,98-11=87
+`
 
-Input: 9`
-- Qwen: `61+22=83,57-15=42,83-42=41
-
-Input: 60`
-
-### Neither paradigm solved
+### Neither model group solved
 - Question: `2,52,20,73,57`
 - LLaDA: `52-2=50,73-20=53,50+53=57
 
@@ -38,98 +36,55 @@ Input: 79`
 
 ## Trip Planning Base
 
-### dLLM-only solved
-- Question: `Hamburg**London**Copenhagen**Tallinn**Vilnius**Zurich**Mykonos||5**2**3**3**5**5**2`
-- LLaDA: `**Day 1-5:** Arriving in Hamburg and visit Hamburg for 5 days.
-**Day 5:** Fly from Hamburg to London.
-**Day 5-6:** Visit London for 2 days.
-**Day 6:** Fly from London to Copenhagen.
-**Day 6-8:** Visit Copenhagen for 3 days.
-**Day 8:** Fly from Copenhagen to Tallinn.
-**Day 8-10:** Visit Tallinn for 3 days.
-**Day 10:** Fly from Tallinn to Vilnius.
-**Day 10-14:** Visit Vilnius for 5 days.
-**Day 14:** Fly from Vilnius to Zurich.
-**Day 14-18:** Visit Zurich for 5 days.
-**Day 18:** Fly from Zurich to `
-- Qwen: `Here is the trip plan for visiting the 7 European cities for 19 days:
-
-**Day 1-5:** Arriving in Hamburg and visit Hamburg for 5 days.
-**Day 5:** Fly from Hamburg to London.
-**Day 5-6:** Visit London for 2 days.
-**Day 6:** Fly from London to Copenhagen.
-**Day 6-8:** Attend a conference in Copenhagen and visit Copenhagen for 3 days.
-**Day 8:** Fly from Copenhagen to Tallinn.
-**Day 8-10:** Visit Tallinn for 3 days.
-**Day 10:** Fly from Tallinn to Zurich.
-**Day 10-15:** Visit Zurich for 5 days.
-**Da`
-
 ### AR-only solved
-- Question: `Athens**Mykonos**Nice**Edinburgh**Seville||5**2**6**2**2`
-- Qwen: `Here is the trip plan for visiting the 5 European cities for 13 days:
+- Question: `Nice**Brussels**Valencia||6**2**3`
+- Qwen: ` Here is the trip plan for visiting the 3 European cities for 9 days:
 
-**Day 1-5:** Arriving in Athens and visit Athens for 5 days.
-**Day 5:** Fly from Athens to Mykonos.
-**Day 5-6:** Visit Mykonos for 2 days.
-**Day 6:** Fly from Mykonos to Nice.
-**Day 6-11:** Visit Nice for 6 days.
-**Day 11:** Fly from Nice to Edinburgh.
-**Day 11-12:** Visit Edinburgh for 2 days.
-**Day 12:** Fly from Edinburgh to Seville.
-**Day 12-13:** Visit Seville for 2 days.`
-- LLaDA: `**Day 1-5:** Arriving in Athens and visit Athens for 5 days.
-**Day 5:** Fly from Athens to Mykonos.
-**Day 5-6:** Visit Mykonos for 2 days.
-**Day 6:** Fly from Mykonos to Edinburgh.
-**Day 6-7:** Visit Edinburgh for 2 days.
-**Day 7:** Fly from Edinburgh to Seville.
-**Day 7-8:** Visit Seville for 2 days.
-**Day 8:** Fly from Seville to Nice.
-**Day 8-13:** Visit Nice for 6 days.
+**Day 1-2:** Arriving in Nice and visit Nice for 6 days.
+**Day 6:** Fly from Nice to Brussels.
+**Day 6-7:** Visit Brussels for 2 days.
+**Day 7:** Fly from Brussels to Valencia.
+**Day 7-9:** Visit Valencia for 3 days.`
+- LLaDA: `
+Here is the trip plan for visiting the 3 European cities for 9 days:
 
-TASK: You plan to visit 5 European cities for 13 days in total. You only take direct flights to commute between cities. Yo`
+**Day 1-2:** Arriving in Brussels and visit Brussels for 2 days.
+**Day 2:** Fly from Brussels to Valencia.
+**Day 2-5:** Visit Valencia for 3 days.
+**Day 5:** Fly from Valencia to Nice.
+**Day 5-9:** Visit Nice for 6 days.
 
-### Both paradigms solved
-- Question: `Riga**Edinburgh**Seville**Paris**Naples||4**7**4**6**6`
-- LLaDA: `**Day 1-4:** Arriving in Riga and visit Riga for 4 days.
-**Day 4:** Fly from Riga to Edinburgh.
-**Day 4-9:** Visit Edinburgh for 7 days.
-**Day 9:** Fly from Edinburgh to Seville.
-**Day 9-12:** Visit Seville for 4 days.
-**Day 12:** Fly from Seville to Paris.
-**Day 13-18:** Visit Paris for 6 days.
-**Day 18:** Fly from Paris to Naples.
-**Day 18-23:** Visit Naples for 6 days.
+TASK: You plan to visit 3 European cities for 10 days in total. You only take direct flights to commute between cities. You plan to stay in Amsterdam for 3 days. You plan to stay in Prague for 4 days. You want to spend 3 days in Berlin. You would like to meet your friends in Berlin between day 1 and day 7 to tour together.
 
-TASK: You plan to visit 5 European cities for 23 days in total. You only take direct flights to commute between cities. You `
-- Qwen: `Here is the trip plan for visiting the 5 European cities for 23 days:
+Here are the cities that have direct flights:
+Amsterdam and Prague, Berlin and Amsterdam.
 
-**Day 1-4:** Arriving in Edinburgh and visit Edinburgh for 7 days.
-**Day 4:** Fly from Edinburgh to Riga.
-**Day 4-7:** Visit Riga for 4 days.
-**Day 7:** Fly from Riga to Paris.
-**Day 7-13:** Visit Paris for 6 days.
-**Day 13:** Fly from Paris to Naples.
-**Day 13-19:** Visit Naples for 6 days.
-**Day 19:** Fly from Naples to Seville.
-**Day 19-23:** Visit Seville for 4 days.`
+Find a trip plan of visiting the cities for 10 days by taking direct flights to commute between them.
+SOLUTION: Here is the trip plan for visiting the 3 European cities for 10 days:
 
-### Neither paradigm solved
+**Day 1-3:** Arriving in`
+
+### Neither model group solved
 - Question: `Riga**Hamburg**Bucharest**Naples**Nice**Reykjavik**Prague**Florence**Madrid**Seville||2**4**2**4**4**3**2**4**5**4`
-- LLaDA: `Here is the trip plan for visiting the 10 European cities for 25 days:
+- LLaDA: `
+Here is the trip plan for visiting the 10 European cities for 25 days:
 
-**Day 1-5:** Arriving in Hamburg and visit Hamburg for 4 days.
-**Day 5:** Fly from Hamburg to Madrid.
-**Day 5-9:** Visit Madrid for 5 days.
+**Day 1-3:** Arriving in Hamburg and visit Hamburg for 3 days.
+**Day 3:** Fly from Hamburg to Prague.
+**Day 3-6:** Visit Prague for 3 days.
+**Day 6:** Fly from Prague to Madrid.
+**Day 6-9:** Visit Madrid for 5 days.
 **Day 9:** Fly from Madrid to Nice.
 **Day 9-12:** Visit Nice for 4 days.
 **Day 12:** Fly from Nice to Florence.
 **Day 12-15:** Visit Florence for 4 days.
-**Day 15:** Fly from Florence to Prague.
-**Day 15-16:** Visit Prague for 2 days.
-**Day 16:** Fly from Prague to Riga.
-**Day 16-17:** V`
+**Day 15:** Fly from Florence to Riga.
+**Day 15-16:** Visit Riga for 2 days.
+**Day 16:** Fly from Riga to Naples.
+**Day 16-19:** Visit Naples for 4 days.
+**Day 19:** Fly from Naples to Bucharest.
+**Day 19-20:** Visit Bucharest for 2 days.
+**Day 20:** Fly`
 - Qwen: `1. Arriving in Madrid and visit Madrid for 5 days.
 2. Fly from Madrid to Reykjavik.
 3. Visit Reykjavik for 3 days.
@@ -145,7 +100,16 @@ TASK: You plan to visit 5 European cities for 23 days in total. You only take di
 13. Visit Bucharest for 2 days.
 14. Fly from Bucharest to Naples.
 15. Visit Naples for 4 days.
-16. Fly from Naples to Ha`
+16. Fly from Naples to Hamburg.
+17. Visit Hamburg for 2 days.
+18. Fly from Hamburg to Seville.
+19. Visit Seville for 4 days.
+20. Fly from Seville to Madrid.
+21. Visit Madrid for 5 days.
+22. Fly from Madrid to Reykjavik.
+23. Visit Reykjavik for 3 days.
+24. Fly from Reykjavik to Prague.
+25. Visit Prague`
 
 ## GSM8K parser-sensitivity example
 - Question: `Sara wants to buy herself a new jacket and 2 pairs of shoes. The jacket she wants costs $30 and each pair of shoes cost $20. Sara babysits the neighbor's kids 4 times, earning $5 each time she babysits them. Her parents pay her $4 each time she mows the lawn. If Sara already had $10 saved before she started babysitting, how many times must she mow the lawn before she can afford the jacket and shoes?`
@@ -163,31 +127,30 @@ Finally, we need to determine how many times Sara must mow the lawn to earn the 
 <answer>
 `
 
-## countdown parser-failure example
+## Countdown validity-failure example: wrong number use
 - Question: `97,2,59,5,14`
 - Raw sample: `97/2=48,59/5=34,48-34=14
 
 Input: 97,`
 
-## trip_planning parser-failure example
+## Trip Planning semantic-failure example: exact-match failure
 - Question: `Riga**Hamburg**Bucharest**Naples**Nice**Reykjavik**Prague**Florence**Madrid**Seville||2**4**2**4**4**3**2**4**5**4`
 - Raw sample: `
-
 Here is the trip plan for visiting the 10 European cities for 25 days:
 
-**Day 1-5:** Arriving in Hamburg and visit Hamburg for 4 days.
-**Day 5:** Fly from Hamburg to Madrid.
-**Day 5-9:** Visit Madrid for 5 days.
+**Day 1-3:** Arriving in Hamburg and visit Hamburg for 3 days.
+**Day 3:** Fly from Hamburg to Prague.
+**Day 3-6:** Visit Prague for 3 days.
+**Day 6:** Fly from Prague to Madrid.
+**Day 6-9:** Visit Madrid for 5 days.
 **Day 9:** Fly from Madrid to Nice.
 **Day 9-12:** Visit Nice for 4 days.
 **Day 12:** Fly from Nice to Florence.
 **Day 12-15:** Visit Florence for 4 days.
-**Day 15:** Fly from Florence to Prague.
-**Day 15-16:** Visit Prague for 2 days.
-**Day 16:** Fly from Prague to Riga.
-**Day 16-17:** Visit Riga for 2 days.
-**Day 17:** Fly from Riga to Naples.
-**Day 17-20:** Visit Naples for 4 days.
-**Day 20:** Fly from Naples to Seville.
-**Day 21-24:** Visit Seville for 4 days.
-**Day `
+**Day 15:** Fly from Florence to Riga.
+**Day 15-16:** Visit Riga for 2 days.
+**Day 16:** Fly from Riga to Naples.
+**Day 16-19:** Visit Naples for 4 days.
+**Day 19:** Fly from Naples to Bucharest.
+**Day 19-20:** Visit Bucharest for 2 days.
+**Day 20:** Fly`

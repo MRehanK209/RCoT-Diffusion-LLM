@@ -1,9 +1,14 @@
 \section{Results}
 \label{sec:results}
 
-The results are organized by the questions that the evaluation pipeline is meant to separate. The chapter first reports the diffusion hyperparameter sweep, because generation length, denoising steps, and block length define the operating regime for LLaDA and Dream. It then uses GSM8K as a prompt-format and parser-sensitivity check, Countdown-cd4 as the clearest budget-dependent ranking reversal, and Trip Planning as a structured natural-language planning task. The final sections examine parser failures, sampling gains, normalized-answer diversity, per-question correlations, and oracle unions.
+The results are organized around the main distinctions introduced in the evaluation design. The chapter first reports the diffusion hyperparameter sweep, because generation length, denoising steps, and block length determine the operating regime for LLaDA and Dream. It then uses GSM8K as a diagnostic benchmark for prompt format and answer extraction, Countdown-cd4 as the clearest case of a budget-dependent ranking reversal, and Trip Planning as a structured natural-language planning task. The final sections examine parser failures, sampling gains, answer diversity, per-question correlations, and oracle-union complementarity.
 
-Detailed numeric tables are kept in Appendix~\ref{sec:appendix-detailed-results}. The main chapter uses figures and short numerical comparisons only when they are needed to support the argument.
+The pass@k question from Chapters~\ref{sec:introduction} and~\ref{sec:model-background} is whether the evaluated diffusion configurations show a large-$k$ coverage effect analogous to the reversal reported in prior RLVR work: a model can be weaker at estimated stochastic pass@1 but cover more correct solutions when many samples are drawn \cite{yue2025rlvr}. Across the tested configurations, the experiments do not show such a large-$k$ advantage for the evaluated diffusion configurations. Instead, those configurations are competitive or leading in several low-budget planning settings, while the evaluated Qwen/Llama configurations usually gain more from repeated stochastic sampling.
+
+Tables~\ref{tab:main-results-gsm8k}--\ref{tab:main-results-trip} in Appendix~\ref{sec:appendix-main-stochastic-results} give the main stochastic results, including bootstrap confidence intervals and primary-parser-entry failure rates. The paired tests below summarize the main Countdown and Trip Planning comparisons without interrupting the chapter with landscape pages.
+
+\input{tables/main_paired_bootstrap_tests}
+In Table~\ref{tab:paired-bootstrap-tests}, the $p$ column is computed as $2\min\{\Pr(\Delta_b \leq 0),\Pr(\Delta_b \geq 0)\}$ over paired bootstrap resamples of the model-difference vector, so it summarizes how often the resampled difference crosses zero in either direction.
 
 \input{chapters/05d_results_hyperparameters}
 \input{chapters/05a_results_gsm8k}

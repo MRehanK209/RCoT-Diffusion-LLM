@@ -41,7 +41,11 @@ Place, Date & Signature
 \section*{Abstract}
 \markboth{Abstract}{Abstract}
 \addcontentsline{toc}{section}{Abstract}
-Autoregressive language models generate reasoning traces one token at a time, which makes each later step depend on choices that have already been fixed. In contrast, masked diffusion language models generate through iterative denoising, allowing them to refine multiple positions before producing the final answer. This thesis compares these two generation paradigms on reasoning and planning tasks under a shared evaluation pipeline. The study evaluates LLaDA, Dream, Qwen2.5, and Llama~3.1 on GSM8K, Countdown-cd4, and Trip Planning. The results show a budget-dependent trade-off rather than a universal winner. On Countdown-cd4, diffusion base models perform best at pass@1, while Qwen-Base and Llama-Base overtake them by pass@128. On Trip Planning, Dream variants lead the deterministic configuration ranking, but the strongest available high-budget result comes from a flat-prompt Llama-Instruct run. GSM8K is close to saturated at high $k$ and mainly serves as a check on prompt format and answer extraction. Per-question analyses show that the models solve overlapping but non-identical subsets of problems. The findings therefore support a complementary view of diffusion and autoregressive reasoning models, with future work pointing toward verification, routing, and selection methods.
+Language models are often compared using a single generated answer, but repeated sampling can change model rankings. This thesis evaluates whether masked diffusion language models and autoregressive language models differ in how their performance changes from deterministic or first-sample evaluation to many-sample pass@k evaluation. The comparison is motivated by recent large-$k$ reasoning work showing that top-1 scores and pass@k can measure different properties of a model's sampled candidate set.
+
+The experiments compare LLaDA, Dream, Qwen2.5, and Llama~3.1 on GSM8K, Countdown-cd4, and Trip Planning using shared downstream parsing and scoring. The results show a sampling-budget-dependent pattern rather than a universal winner. On Countdown-cd4, the evaluated diffusion base configurations have the strongest estimated stochastic pass@1 scores, but Qwen-Base and Llama-Base overtake them by pass@128. On Trip Planning, the evaluated Dream configurations are strongest in deterministic and low-budget settings, while a flat-prompt Llama-Instruct configuration gives the best observed high-budget result. GSM8K is close to saturated at high $k$ and mainly exposes prompt-format and answer-extraction sensitivity.
+
+The evaluated diffusion configurations do not show the same large-$k$ coverage advantage that motivated the study. Instead, the results suggest a practical trade-off: the evaluated diffusion configurations can be competitive when few candidates are available, while the evaluated Qwen/Llama configurations can benefit more from repeated stochastic sampling in some settings. Per-question analyses show overlapping but non-identical success sets, supporting complementarity rather than replacement. Future work should focus on verification, routing, selection, and parser-aware repair methods.
 
 \vfill
 \noindent\footnotesize\textbf{Evaluation code and artifacts:} \url{https://github.com/MRehanK209/RCoT-Diffusion-LLM}
@@ -121,6 +125,11 @@ X. Wang, J. Wei, D. Schuurmans, Q. Le, E. Chi, S. Narang, A. Chowdhery, and D. Z
 ``Self-Consistency Improves Chain of Thought Reasoning in Language Models,''
 \emph{International Conference on Learning Representations}, 2023.
 
+\bibitem{yue2025rlvr}
+Y. Yue \emph{et al.},
+``Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model?'',
+\emph{arXiv preprint arXiv:2504.13837}, 2025.
+
 \bibitem{devlin2019bert}
 J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova,
 ``BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding,''
@@ -199,7 +208,7 @@ A. Grattafiori \emph{et al.},
 \bibitem{cobbe2021gsm8k}
 K. Cobbe \emph{et al.},
 ``Training Verifiers to Solve Math Word Problems,''
-\emph{arXiv preprint \seqsplit{arXiv:2110.14168}}, 2021.
+\emph{arXiv preprint} arXiv:2110.14168, 2021.
 
 \bibitem{xie2024travelplanner}
 J. Xie, K. Zhang, J. Chen, T. Zhu, R. Lou, Y. Tian, Y. Xiao, and Y. Su,
@@ -222,6 +231,8 @@ W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. Yu, J. E. Gonzalez, H. Zhang, 
 \clearpage
 \newgeometry{top=1.4cm,bottom=1.4cm,left=1.6cm,right=1.6cm}
 \section*{AI Usage Statement}
+In plain language, I used AI tools as editing and audit assistants during the final preparation of this thesis. Their role was to inspect repository artifacts, help regenerate tables and figures, check citations and consistency, and suggest wording revisions; the reported claims, numbers, citations, and qualitative examples were checked against the recorded artifacts, and responsibility for the final manuscript remains mine.
+
 \makeAIUsageCard
 \restoregeometry
 

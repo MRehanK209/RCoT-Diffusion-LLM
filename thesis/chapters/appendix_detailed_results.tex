@@ -4,12 +4,20 @@
 This appendix collects per-condition tables that support the summary numbers in the main text. Chapter~\ref{sec:results} reports only the headline patterns; the fuller breakdowns for GSM8K, Trip Planning, the per-question correlation matrices, and the Countdown prompt-mode diagnostic are reproduced here for traceability.
 
 \FloatBarrier
+\subsection{Main stochastic result summary}
+\label{sec:appendix-main-stochastic-results}
+
+These tables collect the main stochastic results referenced in Chapter~\ref{sec:results}. They are placed in the appendix because the full confidence-interval and parser-failure columns require landscape orientation.
+
+\input{tables/main_results_summary}
+
+\FloatBarrier
 \subsection{GSM8K base and instruct pass@k}
 \label{sec:appendix-gsm8k}
 
 \begin{table}[H]
 \centering
-\caption[GSM8K base 0-shot pass@k]{GSM8K base 0-shot pass@k, $n=128$, temperature $=0.7$. Llama-Base has low measured pass@1 in this base-native run; pass@128 reaches $1.000$, and Llama-Instruct templated reaches pass@1$=0.782$ on the same benchmark.}
+\caption[GSM8K base 4-shot pass@k]{GSM8K base 4-shot pass@k under the primary strict boxed-answer scorer, $n=128$, temperature $=0.7$. Llama-Base has low measured estimated stochastic pass@1 in this base-native run; pass@128 reaches $1.000$, and Llama-Instruct templated reaches estimated stochastic pass@1$=0.782$ on the same benchmark.}
 \label{tab:gsm8k-base-zero}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -17,34 +25,34 @@ This appendix collects per-condition tables that support the summary numbers in 
 \toprule
 \textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} & \textbf{32} & \textbf{64} & \textbf{128} \\
 \midrule
-LLaDA-Base & 0.631 & 0.750 & 0.827 & 0.880 & 0.917 & 0.942 & 0.964 & 0.984 \\
+LLaDA-Base & 0.628 & 0.749 & 0.827 & 0.880 & 0.916 & 0.942 & 0.964 & 0.984 \\
 Dream-Base & 0.724 & 0.828 & 0.889 & 0.923 & 0.944 & 0.958 & 0.969 & 0.977 \\
-Qwen-Base  & 0.709 & 0.859 & 0.929 & 0.964 & 0.986 & 0.997 & 1.000 & 1.000 \\
-Llama-Base & 0.143 & 0.259 & 0.430 & 0.636 & 0.818 & 0.930 & 0.981 & 1.000 \\
+Qwen-Base  & 0.694 & 0.851 & 0.928 & 0.963 & 0.986 & 0.997 & 1.000 & 1.000 \\
+Llama-Base & 0.134 & 0.244 & 0.411 & 0.616 & 0.804 & 0.925 & 0.980 & 1.000 \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
 \begin{table}[H]
 \centering
-\caption{GSM8K base 4-shot pass@k, $n=16$, temperature $=0.7$.}
+\caption{GSM8K base 4-shot pass@k under the primary strict boxed-answer scorer, $n=16$, temperature $=0.7$.}
 \label{tab:gsm8k-base-four}
 \scriptsize
 \begin{tabular}{lccccc}
 \toprule
 \textbf{Model} & \textbf{1} & \textbf{2} & \textbf{4} & \textbf{8} & \textbf{16} \\
 \midrule
-LLaDA-Base & 0.665 & 0.779 & 0.843 & 0.881 & 0.898 \\
-Dream-Base & 0.713 & 0.831 & 0.897 & 0.928 & 0.938 \\
-Qwen-Base  & 0.723 & 0.866 & 0.935 & 0.967 & 0.984 \\
-Llama-Base & 0.145 & 0.259 & 0.426 & 0.626 & 0.805 \\
+LLaDA-Base & 0.661 & 0.778 & 0.843 & 0.881 & 0.898 \\
+Dream-Base & 0.712 & 0.830 & 0.897 & 0.928 & 0.938 \\
+Qwen-Base  & 0.709 & 0.859 & 0.933 & 0.967 & 0.984 \\
+Llama-Base & 0.136 & 0.244 & 0.405 & 0.603 & 0.789 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[H]
 \centering
-\caption{GSM8K instruct pass@k at 0-shot and 4-shot, $n=16$, temperature $=0.7$. Diffusion instruct models lead at 0-shot; autoregressive instruct models close the gap with 4-shot examples.}
+\caption{GSM8K instruct pass@k at 0-shot and 4-shot under the primary strict boxed-answer scorer, $n=16$, temperature $=0.7$. The evaluated diffusion instruct configurations lead at 0-shot; the evaluated Qwen/Llama instruct configurations close the gap with 4-shot examples.}
 \label{tab:gsm8k-instruct-zero-four}
 \scriptsize
 \resizebox{\textwidth}{!}{%
@@ -63,6 +71,8 @@ Llama-Base & 0.145 & 0.259 & 0.426 & 0.626 & 0.805 \\
 \bottomrule
 \end{tabular}}
 \end{table}
+
+\input{tables/planning_passk_tables}
 
 \FloatBarrier
 \subsection{Countdown-cd4 prompt-mode diagnostic}
@@ -124,7 +134,7 @@ Llama-Instruct [flat] [vllm] & 0.080 \\
 \subsection{Per-question correlation matrices}
 \label{sec:appendix-correlation}
 
-The summary in Section~\ref{sec:results-correlation} reports within-paradigm and strongest cross-paradigm correlations only. The full pairwise matrices for the six conditions are reproduced below for completeness.
+The summary in Section~\ref{sec:results-correlation} reports within-group and strongest cross-group correlations only. The full pairwise matrices for the six conditions are reproduced below for completeness.
 
 \begin{table}[H]
 \centering

@@ -124,13 +124,21 @@ def plot_gsm8k_passk() -> None:
 
 
 def plot_gsm8k_prompt_sensitivity() -> None:
-    data = load_passk("results/milestone2_gsm8k_instruct/passk_gsm8k_comparison.json")
+    rows = list(csv.DictReader((TABLES / "main_results_summary.csv").open()))
     models = ["LLaDA", "Dream", "Qwen", "Llama"]
     templated = []
     flat = []
     for model in models:
-        templated.append(next(vals[1] * 100 for name, vals in data.items() if model in name and "flat" not in name.lower()))
-        flat.append(next(vals[1] * 100 for name, vals in data.items() if model in name and "flat" in name.lower()))
+        templated.append(100 * float(next(
+            row["pass@1"]
+            for row in rows
+            if row["benchmark_condition"] == "GSM8K instruct templated" and model in row["model"]
+        )))
+        flat.append(100 * float(next(
+            row["pass@1"]
+            for row in rows
+            if row["benchmark_condition"] == "GSM8K instruct flat" and model in row["model"]
+        )))
     x = range(len(models))
     fig, ax = plt.subplots(figsize=(8.5, 4.8), constrained_layout=True)
     ax.bar([i - 0.18 for i in x], templated, width=0.36, color=COLORS["Templated"], label="Templated")
@@ -272,9 +280,13 @@ def plot_hyperparameter_summary() -> None:
     ax.set_ylim(0, 105)
     pct_axis(ax)
     ax.set_ylabel("Score (%)")
-    ax.set_title("GSM8K sweep summary")
+    ax.set_title("GSM8K sweep best observed scores")
     ax.grid(axis="y", alpha=0.25)
     ax.legend(frameon=False)
+    for xi, val in enumerate(best1):
+        ax.text(xi - 0.17, val + 1.2, f"{val:.2f}", ha="center", va="bottom", fontsize=8)
+    for xi, val in enumerate(bestk):
+        ax.text(xi + 0.17, val + 1.2, f"{val:.2f}", ha="center", va="bottom", fontsize=8)
     fig.savefig(IMAGES / "hyperparameter_summary.pdf")
     plt.close(fig)
 
@@ -380,11 +392,11 @@ def plot_parser_failure_rates() -> None:
     im = ax.imshow(matrix, cmap="OrRd", vmin=0, vmax=max(max(row) for row in matrix) or 1, aspect="auto")
     ax.set_xticks(range(len(models)), models)
     ax.set_yticks(range(len(labels)), labels)
-    ax.set_title("Canonical parser failure rates")
+    ax.set_title("Primary parser-entry failure rates")
     for i, row in enumerate(matrix):
         for j, value in enumerate(row):
             ax.text(j, i, f"{value:.1f}%", ha="center", va="center", fontsize=9)
-    fig.colorbar(im, ax=ax, fraction=0.05, pad=0.02, label="Parse failure rate")
+    fig.colorbar(im, ax=ax, fraction=0.05, pad=0.02, label="Parser-entry failure rate")
     fig.savefig(IMAGES / "parser_failure_rates.pdf")
     plt.close(fig)
 
@@ -435,13 +447,20 @@ def plot_parser_sensitivity_summary() -> None:
 
 def plot_diversity_vs_gain() -> None:
     rows = read_csv(TABLES / "diversity_summary.csv")
+    bench_labels = {
+        "gsm8k": "GSM8K",
+        "countdown": "CD",
+        "trip_planning": "Trip",
+    }
     fig, ax = plt.subplots(figsize=(7.6, 5.3), constrained_layout=True)
     for row in rows:
         x = float(row["mean_unique_normalized_answers"])
         y = float(row["pass_gain"]) * 100
         name = row["model"]
         ax.scatter(x, y, s=70, color=COLORS[name], alpha=0.85)
-        ax.text(x + 0.02, y + 0.12, f"{name} ({row['benchmark'][:4]})", fontsize=8)
+        cond = row["condition"].replace("trip_planning_", "trip_")
+        suffix = "inst" if cond.endswith("instruct") else "base"
+        ax.text(x + 0.02, y + 0.12, f"{name} {bench_labels[row['benchmark']]}-{suffix}", fontsize=8)
     ax.set_xlabel("Mean unique normalized answers per question")
     ax.set_ylabel("pass@max - pass@1 (pp)")
     ax.set_title("Diversity and pass@k growth")
@@ -505,7 +524,7 @@ def plot_overlap_stacked() -> None:
     ax.bar(labels, ar_only, bottom=[a + b for a, b in zip(dllm_only, both)], color=COLORS["Qwen"], label="AR only")
     ax.bar(labels, neither, bottom=[a + b + c for a, b, c in zip(dllm_only, both, ar_only)], color="#d9d9d9", label="Neither")
     ax.set_ylabel("Questions")
-    ax.set_title("Paradigm overlap by condition")
+    ax.set_title("Success-set overlap by condition")
     pct_axis(ax)
     ax.tick_params(axis="x", rotation=20)
     ax.legend(frameon=False, ncol=4, loc="upper center")

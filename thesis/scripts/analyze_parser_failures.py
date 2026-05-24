@@ -88,11 +88,11 @@ def run_specs() -> list[RunSpec]:
         RunSpec("countdown", "prompt_diag", "Llama", "AR", "instruct_templated", "results/meta-llama_Llama-3.1-8B-Instruct_countdown_cd4_32_8_0.7_8_512_128_generations_instruct_templated_vllm.json"),
         RunSpec("countdown", "prompt_diag", "Llama", "AR", "instruct_flat", "results/meta-llama_Llama-3.1-8B-Instruct_countdown_cd4_32_8_0.7_8_512_128_generations_instruct_flat_vllm.json"),
         # Trip planning main stochastic runs and available flat variants
-        RunSpec("trip_planning", "base_main", "LLaDA", "dLLM", "base_native", "results/GSAI-ML_LLaDA-8B-Base_trip_planning_256_256_32_1_0.7_2_200_64_generations_fast_dllm.json"),
+        RunSpec("trip_planning", "base_main", "LLaDA", "dLLM", "base_native", "results/milestone2_trip_planning_llada_passk/GSAI-ML_LLaDA-8B-Base_trip_planning_256_256_32_1_0.7_2_200_64_generations_base_native_fast_dllm.json"),
         RunSpec("trip_planning", "base_main", "Dream", "dLLM", "base_native", "results/Dream-org_Dream-v0-Base-7B_trip_planning_256_256_32_1_0.7_2_200_64_generations_fast_dllm.json"),
         RunSpec("trip_planning", "base_main", "Qwen", "AR", "base_native", "results/Qwen_Qwen2.5-7B_trip_planning_256_1_0.7_2_200_64_generations_vllm.json"),
         RunSpec("trip_planning", "base_main", "Llama", "AR", "base_native", "results/milestone2_trip_planning_llama_passk/meta-llama_Llama-3.1-8B_trip_planning_256_1_0.7_2_200_64_generations_base_native_vllm.json"),
-        RunSpec("trip_planning", "instruct_main", "LLaDA", "dLLM", "instruct_templated", "results/GSAI-ML_LLaDA-8B-Instruct_trip_planning_256_256_32_1_0.7_2_200_64_generations_fast_dllm.json"),
+        RunSpec("trip_planning", "instruct_main", "LLaDA", "dLLM", "instruct_templated", "results/milestone2_trip_planning_llada_passk/GSAI-ML_LLaDA-8B-Instruct_trip_planning_256_256_16_1_0.7_2_200_64_generations_instruct_templated_fast_dllm.json"),
         RunSpec("trip_planning", "instruct_main", "Dream", "dLLM", "instruct_templated", "results/Dream-org_Dream-v0-Instruct-7B_trip_planning_256_256_32_1_0.7_2_200_64_generations_fast_dllm.json"),
         RunSpec("trip_planning", "instruct_main", "Qwen", "AR", "instruct_templated", "results/Qwen_Qwen2.5-7B-Instruct_trip_planning_256_1_0.7_2_200_64_generations_vllm.json"),
         RunSpec("trip_planning", "instruct_main", "Llama", "AR", "instruct_templated", "results/milestone2_trip_planning_llama_passk/meta-llama_Llama-3.1-8B-Instruct_trip_planning_256_1_0.7_2_200_64_generations_instruct_templated_vllm.json"),
@@ -523,7 +523,7 @@ def summarize_run(spec: RunSpec, data: dict[str, Any]) -> tuple[dict[str, Any], 
                 "question_index": q_idx,
                 "sample_index": s_idx,
                 "question": question,
-                "raw": raw[:1200],
+                "raw": raw,
                 "gold": gold,
             }
         if spec.benchmark == "gsm8k":

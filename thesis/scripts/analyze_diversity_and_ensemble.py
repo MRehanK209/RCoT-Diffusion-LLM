@@ -267,16 +267,103 @@ def choose_example_payload(qualitative: dict[str, Any], model_pool: list[str], q
     raise ValueError("No payload available")
 
 
-def first_sample_text(item: dict[str, Any], prefer_correct: bool = False) -> str:
+def strict_raw_correct(benchmark: str, item: dict[str, Any], raw: str) -> bool:
+    if benchmark == "countdown":
+        return bool(apf.cd_score_single(str(item["question"]), raw))
+    if benchmark == "trip_planning":
+        cities, durations = str(item["question"]).split("||")
+        if not apf.trip_score_single(cities, durations, raw):
+            return False
+        parsed = apf.parse_trip_response(apf.clean_trip_text(raw))
+        gold_cities = [x for x in cities.split("**") if x]
+        if len(parsed) != len(gold_cities):
+            return False
+        gold_durations = [int(x) for x in durations.split("**") if x]
+        total_days = sum(gold_durations) - max(0, len(gold_durations) - 1)
+        end_match = None
+        for match in apf.re.finditer(r"\d+\s*-\s*(\d+)", raw):
+            if int(match.group(1)) == total_days:
+                end_match = match
+                break
+        if end_match is None:
+            return False
+        if apf.re.search(r"\b([A-Za-z]{3,})\b(?:\s+\1\b){3,}", raw, flags=apf.re.I):
+            return False
+        tail = raw[end_match.end():].lower()
+        bad_tail_markers = ("**day", "task:", "your task is", "you are given", "<|endoftext|>", "<|beginoftext|>", "skip to content")
+        return not any(marker in tail for marker in bad_tail_markers)
+    parsed = apf.sample_analysis(
+        benchmark,
+        raw,
+        item["ground_truth"],
+        question=item.get("question"),
+        canonical_from_file=None,
+    )
+    return bool(parsed["canonical_correct"])
+
+
+def sample_text_by_strict_status(benchmark: str, item: dict[str, Any], want_correct: bool) -> str | None:
     raws = item.get("raw_generations", item.get("generations", []))
     if not raws:
-        return ""
-    if prefer_correct:
-        gt = item["ground_truth"]
-        for answer, raw in zip(item["extracted_answer"], raws):
-            if answer is not None and compare_numeric(answer, gt):
-                return str(raw).strip()[:500]
-    return str(raws[0]).strip()[:500]
+        return None
+    candidates: list[str] = []
+    for raw in raws:
+        text = str(raw)
+        if strict_raw_correct(benchmark, item, text) == want_correct:
+            candidates.append(text)
+    if not candidates:
+        return None
+    if want_correct and benchmark == "trip_planning":
+        def continuation_penalty(text: str) -> tuple[int, int]:
+            lower = text.lower()
+            has_new_task = int(
+                "task:" in lower
+                or "your task is" in lower
+                or "you are given" in lower
+                or "<|endoftext|>" in lower
+                or "<|beginoftext|>" in lower
+                or "skip to content" in lower
+            )
+            return has_new_task, len(text)
+
+        candidates.sort(key=continuation_penalty)
+        return candidates[0]
+    if want_correct:
+        candidates.sort(key=len)
+        return candidates[0]
+    return candidates[0]
+
+
+def qualitative_sample_penalty(benchmark: str, text: str, want_correct: bool) -> int:
+    if want_correct and benchmark == "trip_planning":
+        lower = text.lower()
+        has_new_task = (
+            "task:" in lower
+            or "your task is" in lower
+            or "you are given" in lower
+            or "<|endoftext|>" in lower
+            or "<|beginoftext|>" in lower
+            or "skip to content" in lower
+        )
+        return (100000 if has_new_task else 0) + len(text)
+    if want_correct:
+        return len(text)
+    return 0
+
+
+def choose_model_sample(
+    qualitative: dict[str, Any],
+    benchmark: str,
+    model_pool: list[str],
+    question_idx: int,
+    want_correct: bool,
+) -> tuple[str, str, int] | None:
+    for model in model_pool:
+        item = qualitative["payloads"][model][question_idx]
+        text = sample_text_by_strict_status(benchmark, item, want_correct)
+        if text is not None:
+            return model, text, qualitative_sample_penalty(benchmark, text, want_correct)
+    return None
 
 
 def tex_escape(text: str) -> str:
@@ -298,8 +385,18 @@ def write_qualitative_examples(oracle_data: dict[str, Any], parser_examples: dic
     md_lines = ["# Qualitative Examples", ""]
     tex_lines = [
         "\\section{Qualitative Examples}",
-        "The following compact examples are extracted from the thesis generation JSON files.",
+        "\\label{sec:appendix-qualitative}",
+        "The following examples list exact question strings and raw model samples copied from the recorded generation artifacts. Line wrapping is a typesetting change only.",
+        "\\lstset{basicstyle=\\scriptsize\\ttfamily,breaklines=true,breakatwhitespace=false,columns=fullflexible,keepspaces=true,frame=single}",
     ]
+
+    def add_listing(lines: list[str], title: str, text: Any) -> None:
+        lines.extend([
+            f"\\textbf{{{title}.}}",
+            "\\begin{lstlisting}",
+            str(text),
+            "\\end{lstlisting}",
+        ])
 
     condition_map = {
         "countdown_base": "Countdown-cd4 Base",
@@ -309,37 +406,45 @@ def write_qualitative_examples(oracle_data: dict[str, Any], parser_examples: dic
         bundle = oracle_data[cond_key]
         d_models = [spec["model"] for spec in bundle["specs"] if spec["paradigm"] == "dLLM"]
         a_models = [spec["model"] for spec in bundle["specs"] if spec["paradigm"] == "AR"]
+        benchmark = "countdown" if cond_key == "countdown_base" else "trip_planning"
         cases = [
-            ("dLLM-only solved", bundle["dllm_only"], d_models, a_models),
-            ("AR-only solved", bundle["ar_only"], a_models, d_models),
-            ("Both paradigms solved", bundle["both"], d_models, a_models),
-            ("Neither paradigm solved", bundle["neither"], d_models, a_models),
+            ("dLLM-only solved", bundle["dllm_only"], d_models, a_models, True, False),
+            ("AR-only solved", bundle["ar_only"], a_models, d_models, True, False),
+            ("Both model groups solved", bundle["both"], d_models, a_models, True, True),
+            ("Neither model group solved", bundle["neither"], d_models, a_models, False, False),
         ]
         md_lines.extend([f"## {title}", ""])
         tex_lines.extend([f"\\subsection{{{title}}}"])
-        for label, indices, primary_models, secondary_models in cases:
-            if not indices:
+        for label, indices, primary_models, secondary_models, primary_correct, secondary_correct in cases:
+            chosen = None
+            chosen_penalty = None
+            for q_idx in indices:
+                primary = choose_model_sample(bundle, benchmark, primary_models, q_idx, primary_correct)
+                secondary = choose_model_sample(bundle, benchmark, secondary_models, q_idx, secondary_correct)
+                if primary is not None and secondary is not None:
+                    penalty = primary[2] + secondary[2]
+                    if chosen is None or chosen_penalty is None or penalty < chosen_penalty:
+                        chosen = (q_idx, primary, secondary)
+                        chosen_penalty = penalty
+                    if penalty == 0:
+                        break
+            if chosen is None:
                 continue
-            q_idx = indices[0]
+            q_idx, primary, secondary = chosen
             q_text = bundle["question_texts"][q_idx]
-            primary_model, primary_item = choose_example_payload(bundle, primary_models, q_idx)
-            secondary_model, secondary_item = choose_example_payload(bundle, secondary_models, q_idx)
-            q_text_tex = tex_escape(q_text[:180])
-            primary_text_tex = tex_escape(first_sample_text(primary_item, prefer_correct=True)[:220])
-            secondary_text_tex = tex_escape(first_sample_text(secondary_item, prefer_correct=False)[:220])
+            primary_model, primary_text, _ = primary
+            secondary_model, secondary_text, _ = secondary
             md_lines.extend([
                 f"### {label}",
                 f"- Question: `{q_text}`",
-                f"- {primary_model}: `{first_sample_text(primary_item, prefer_correct=True)}`",
-                f"- {secondary_model}: `{first_sample_text(secondary_item, prefer_correct=False)}`",
+                f"- {primary_model}: `{primary_text}`",
+                f"- {secondary_model}: `{secondary_text}`",
                 "",
             ])
-            tex_lines.extend([
-                f"\\paragraph{{{label}}}",
-                f"\\textbf{{Question.}} \\texttt{{{q_text_tex}}}\\\\",
-                f"\\textbf{{{primary_model}.}} \\texttt{{{primary_text_tex}}}\\\\",
-                f"\\textbf{{{secondary_model}.}} \\texttt{{{secondary_text_tex}}}",
-            ])
+            tex_lines.append(f"\\paragraph{{{label}}}")
+            add_listing(tex_lines, "Question", q_text)
+            add_listing(tex_lines, primary_model, primary_text)
+            add_listing(tex_lines, secondary_model, secondary_text)
 
     gsm_example = None
     for key, example in parser_examples.get("gsm8k", {}).items():
@@ -347,37 +452,40 @@ def write_qualitative_examples(oracle_data: dict[str, Any], parser_examples: dic
             gsm_example = example
             break
     if gsm_example is not None:
-        gsm_q_tex = tex_escape(gsm_example["question"][:180])
-        gsm_raw_tex = tex_escape(gsm_example["raw"][:260])
         md_lines.extend([
             "## GSM8K parser-sensitivity example",
             f"- Question: `{gsm_example['question']}`",
             f"- Raw sample: `{gsm_example['raw']}`",
             "",
         ])
-        tex_lines.extend([
-            "\\subsection{GSM8K parser-sensitivity example}",
-            f"\\textbf{{Question.}} \\texttt{{{gsm_q_tex}}}\\\\",
-            f"\\textbf{{Raw sample.}} \\texttt{{{gsm_raw_tex}}}",
-        ])
+        tex_lines.append("\\subsection{GSM8K parser-sensitivity example}")
+        add_listing(tex_lines, "Question", gsm_example["question"])
+        add_listing(tex_lines, "Raw sample", gsm_example["raw"])
+
+    def failure_title(benchmark: str, category: str) -> str:
+        if benchmark == "countdown" and category in {"wrong number use", "wrong target", "division by zero"}:
+            return f"Countdown validity-failure example: {category}"
+        if benchmark == "countdown":
+            return f"Countdown {category} example"
+        if benchmark == "trip_planning" and category in {"exact-match failure", "city sequence mismatch", "duration mismatch"}:
+            return f"Trip Planning semantic-failure example: {category}"
+        return f"Trip Planning parser-entry-failure example: {category}"
 
     for benchmark in ("countdown", "trip_planning"):
-        sample = next(iter(parser_examples.get(benchmark, {}).values()), None)
+        sample_key, sample = next(iter(parser_examples.get(benchmark, {}).items()), (None, None))
         if sample is None:
             continue
-        sample_q_tex = tex_escape(sample["question"][:180])
-        sample_raw_tex = tex_escape(sample["raw"][:260])
+        category = str(sample_key).split(":")[-1] if sample_key is not None else "failure"
+        title = failure_title(benchmark, category)
         md_lines.extend([
-            f"## {benchmark} parser-failure example",
+            f"## {title}",
             f"- Question: `{sample['question']}`",
             f"- Raw sample: `{sample['raw']}`",
             "",
         ])
-        tex_lines.extend([
-            f"\\subsection{{{benchmark.replace('_', ' ').title()} parser-failure example}}",
-            f"\\textbf{{Question.}} \\texttt{{{sample_q_tex}}}\\\\",
-            f"\\textbf{{Raw sample.}} \\texttt{{{sample_raw_tex}}}",
-        ])
+        tex_lines.append(f"\\subsection{{{title}}}")
+        add_listing(tex_lines, "Question", sample["question"])
+        add_listing(tex_lines, "Raw sample", sample["raw"])
 
     (TABLES / "qualitative_examples.md").write_text("\n".join(md_lines))
     appendices = THESIS / "appendices"

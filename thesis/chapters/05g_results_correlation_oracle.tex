@@ -1,16 +1,16 @@
-\subsection{Per-question correlation and paradigm complementarity}
+\subsection{Per-question correlation and oracle complementarity}
 \label{sec:results-correlation}
 
-The pass@k results compare aggregate accuracies. Per-question accuracy vectors carry a finer signal: for each model, the fraction of $n$ samples that solve a given question. Pearson correlations between these vectors quantify how strongly two models share failure modes. Figure~\ref{fig:correlation-summary} reports the within-paradigm and strongest cross-paradigm correlation for each of the six main conditions; the full pairwise matrices are reproduced in Appendix~\ref{sec:appendix-correlation}.
+The pass@k results compare aggregate accuracies. Per-question accuracy vectors carry a finer signal: for each model, the fraction of $n$ samples that solve a given question. Pearson correlations between these vectors quantify how strongly two models share failure modes. Figure~\ref{fig:correlation-summary} reports the within-group and strongest cross-group correlation for each of the six main conditions; the full pairwise matrices are reproduced in Appendix~\ref{sec:appendix-correlation}.
 
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.84\textwidth]{images/correlation_summary.pdf}
-\caption{Within-paradigm and strongest cross-paradigm Pearson correlations across the six main comparison conditions. Countdown Base has the strongest dLLM--dLLM agreement, while Trip Planning has the strongest AR--AR agreement.}
+\caption{Within-group and strongest cross-group Pearson correlations across the six main comparison conditions. Countdown Base has the strongest dLLM--dLLM agreement, while Trip Planning has the strongest AR--AR agreement.}
 \label{fig:correlation-summary}
 \end{figure}
 
-High within-paradigm correlations indicate that models from the same generation paradigm tend to share failure modes. Countdown Base is the most informative case: LLaDA-Base and Dream-Base correlate at $r=0.638$, which exceeds Dream-Base--Qwen-Base at $r=0.572$ even though Dream shares Qwen's pretrained lineage. This is evidence of behavioral alignment by generation paradigm beyond pretrained lineage, not proof of a mechanistic cause. Trip Planning Instruct adds a complementary observation: AR--AR correlation is high while cross-paradigm correlations are lower, especially Dream-Instruct--Qwen-Instruct at $r=0.157$.
+High within-group correlations indicate that some evaluated configurations share failure modes. Countdown Base is the most informative case: LLaDA-Base and Dream-Base correlate at $r=0.638$, which exceeds Dream-Base--Qwen-Base at $r=0.572$ even though Dream shares Qwen's pretrained lineage. This pattern is consistent with shared behavior among the evaluated diffusion decoding setups, but it should not be read as proof that the generation interface alone determines the correlation structure. Trip Planning Instruct adds a related observation: AR--AR correlation is high while cross-group correlations are lower, especially Dream-Instruct--Qwen-Instruct at $r=0.157$.
 
 \begin{figure}[!htbp]
 \centering
@@ -19,4 +19,4 @@ High within-paradigm correlations indicate that models from the same generation 
 \label{fig:oracle-gain}
 \end{figure}
 
-The oracle analysis asks how much performance would be available if a selector could always choose a correct sample whenever one exists among a set of models. This is not a practical ensemble method, because it assumes knowledge of correctness at selection time. It is useful only as an upper bound on complementarity in the existing samples. On Countdown base, the best single model solves $509$ of $992$ questions, while a Dream$+$Qwen oracle union solves $541$ and the full four-model union solves $604$. On Trip Planning base, the best single model solves $51$ of $200$ questions, while Dream$+$Llama solves $64$ and the full four-model union solves $71$. A practical system would need a learned selector, verifier, router, or parser-aware validation method.
+The oracle analysis estimates an upper bound on complementarity by asking how many questions are solved by at least one model in a set. This is not a practical ensemble method, because it assumes knowledge of correctness at selection time. It is useful only as an upper bound on complementarity in the existing samples. On Countdown base, the best single model solves $509$ of $992$ questions, while a Dream$+$Qwen oracle union solves $541$ and the full four-model union solves $604$. On Trip Planning base, the best single model solves $51$ of $200$ questions, while Dream$+$Llama solves $64$ and the full four-model union solves $71$. A practical system would need a learned selector, verifier, router, or parser-aware validation method.
